@@ -4,6 +4,21 @@ All notable changes per release. Versions follow [semver](https://semver.org)
 pre-1.0 conventions: minor bumps may include breaking changes (called out
 explicitly with **Breaking.**), patch bumps are docs / build / fixes only.
 
+## v0.10.1 — 2026-07-24
+
+Skill packaging + docs. No service change.
+
+- **Skill published to ClawHub.** The `talkies` agent skill moves to the
+  standard `.agents/skills/` layout; the CI pipeline gains a tag-gated
+  `publish-skills-to-clawhub` job (runs after the image build + GitHub release).
+- **Skill doc sync:** caught the skill up to the current model catalog — ASR
+  6 → 8 backends (adds `nemotron-3.5-asr-0.6b`), TTS 2 → 7 slugs (adds
+  `kokoro-82m-nvidia` and the `qwen3-tts-1.7b` / `*-custom` / `*-design`
+  family) with a modes table and corrected per-slug languages + `instructions`
+  semantics.
+- Build: `scan_fail_build: false` (Grype findings go to the Security tab
+  without failing the run).
+
 ## v0.10.0 — 2026-07-02
 
 Configurable log level + opt-in full-request DEBUG logging, plus a repo-wide

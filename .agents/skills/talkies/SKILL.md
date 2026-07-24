@@ -1,6 +1,6 @@
 ---
 name: talkies
-description: Self-hosted OpenAI-compatible speech service. /v1/audio/transcriptions fronts seven open ASR models (Whisper, Parakeet, Canary); /v1/audio/speech fronts two TTS engines — Kokoro-82M (41 baked voices) and Qwen3-TTS-0.6B (CUDA-only voice cloning from user-mounted .wav reference clips). Same wire format as OpenAI — change the base URL + slug. Stereo diarization, URL fetching, MCP endpoint, bearer auth.
+description: Self-hosted OpenAI-compatible speech service. /v1/audio/transcriptions fronts eight open ASR models (Whisper, Parakeet, Nemotron-3.5-ASR, Canary); /v1/audio/speech fronts 2 TTS engines / 3 backends — Kokoro-82M (41 baked voices, PyTorch + ONNX runtimes) and the CUDA-only Qwen3-TTS family (voice cloning, preset speakers, voice design). Same wire format as OpenAI — change the base URL + slug. Stereo diarization, URL fetching, MCP endpoint, bearer auth.
 homepage: https://github.com/psyb0t/docker-talkies
 user-invocable: true
 metadata:
@@ -11,9 +11,9 @@ metadata:
 
 Self-hosted speech service — ASR and TTS, one container. OpenAI-compatible wire shape on both endpoints; point an OpenAI client at it, change the model slug, done.
 
-ASR (`POST /v1/audio/transcriptions`): six backends — `whisper-large-v3`, `whisper-large-v3-turbo`, `parakeet-tdt-0.6b-v3`, `canary-180m-flash`, `canary-1b-flash`, `canary-qwen-2.5b`.
+ASR (`POST /v1/audio/transcriptions`): eight backends — `whisper-large-v3`, `whisper-large-v3-turbo`, `parakeet-tdt-0.6b-v3`, `nemotron-3.5-asr-0.6b`, `canary-180m-flash`, `canary-1b-flash`, `canary-qwen-2.5b`.
 
-TTS (`POST /v1/audio/speech`): two engines — `kokoro-82m` with 41 baked voices across en/es/fr/hi/it/pt, and `qwen3-tts-0.6b` for CUDA-only voice cloning from reference clips (three builtin samples plus any `.wav` you drop into `/data/custom-voices/`, including nested subdirs). Both discovered via `GET /v1/audio/voices`.
+TTS (`POST /v1/audio/speech`): 2 engines / 3 backends across 7 slugs — `kokoro-82m` (PyTorch) and `kokoro-82m-nvidia` (ONNX/ORT) with 41 baked voices across en/es/fr/hi/it/pt, plus the CUDA-only Qwen3-TTS family: `qwen3-tts-0.6b` / `qwen3-tts-1.7b` (voice cloning from reference clips), `qwen3-tts-0.6b-custom` / `qwen3-tts-1.7b-custom` (9 preset speakers), `qwen3-tts-1.7b-design` (voice from an NL description). Discover voices via `GET /v1/audio/voices`.
 
 Extras: stereo diarization on transcription, URL `file_path` fetching, server-side file staging, MCP endpoint with 6 ASR-side tools, optional bearer-token auth.
 
@@ -110,6 +110,7 @@ curl -s $TALKIES_URL/v1/audio/speech \
 | `whisper-large-v3` | faster-whisper | yes | yes | 99 auto-detect | best accuracy, slowest |
 | `whisper-large-v3-turbo` | faster-whisper | yes | yes | 99 auto-detect | sweet spot — fast, accurate |
 | `parakeet-tdt-0.6b-v3` | NeMo TDT | no | yes | English only | very fast on GPU |
+| `nemotron-3.5-asr-0.6b` | parakeet.cpp / ggml (CPU inference) | yes | yes | 40+ locales, auto-detect | CPU-optimized multilingual; pin via `language=` |
 | `canary-180m-flash` | NeMo Canary | yes | yes | English only (small) | smallest, runs anywhere |
 | `canary-1b-flash` | NeMo Canary | no | yes | en/de/fr/es + translation | multilingual, translation |
 | `canary-qwen-2.5b` | NeMo SALM | no | yes | English only | best English accuracy (no timestamps) |
@@ -121,14 +122,23 @@ Pick by use case:
 
 ### TTS
 
-| Slug | Family | CPU | CUDA | Languages | Voices |
-|---|---|---|---|---|---|
-| `kokoro-82m` | Kokoro (in-process, 24 kHz) | yes | yes | en (US + UK), es, fr, hi, it, pt | 41 baked (discover via `GET /v1/audio/voices`) |
-| `qwen3-tts-0.6b` | Qwen3-TTS (voice clone, 12 kHz) | no | yes | en, zh, ko, ja, fr, de, ru, es, it, pt, pl, nl, ar, vi, th, id, ms (17) | 3 builtin samples + any `.wav` under `/data/custom-voices/` |
+2 engines / 3 backends. Kokoro ships in two runtimes (`kokoro-82m` PyTorch, `kokoro-82m-nvidia` ONNX/ORT) — same weights, same voice catalog, same wire format. Qwen3-TTS ships 5 CUDA-only slugs across three modes (base cloning / custom_voice preset speakers / voice_design). Mode is implicit in the slug — see [Qwen3-TTS Modes](#qwen3-tts-modes).
+
+| Slug | Family | Mode | CPU | CUDA | Languages | Voices |
+|---|---|---|---|---|---|---|
+| `kokoro-82m` | Kokoro (PyTorch in-process, 24 kHz) | — | yes | yes | en (US + UK), es, fr, hi, it, pt | 41 baked (discover via `GET /v1/audio/voices`) |
+| `kokoro-82m-nvidia` | Kokoro (ONNX via ORT, 24 kHz) | — | yes | yes | en (US + UK), es, fr, hi, it, pt | 41 baked (same catalog as `kokoro-82m`) |
+| `qwen3-tts-0.6b` | Qwen3-TTS (12 kHz) | base | no | yes | 17 (en, zh, ja, ko, fr, de, es, it, pt, ru, vi, th, id, ar, tr, pl, nl) | 3 builtin samples + any `.wav` under `/data/custom-voices/` |
+| `qwen3-tts-1.7b` | Qwen3-TTS (12 kHz) | base | no | yes | 10 (en, zh, ja, ko, fr, de, es, it, pt, ru) | 3 builtin samples + any `.wav` under `/data/custom-voices/` |
+| `qwen3-tts-0.6b-custom` | Qwen3-TTS (12 kHz) | custom_voice | no | yes | en, zh, ja, ko | 9 preset speakers (`instructions` dropped — 0.6B limitation) |
+| `qwen3-tts-1.7b-custom` | Qwen3-TTS (12 kHz) | custom_voice | no | yes | en, zh, ja, ko | 9 preset speakers + emotion via `instructions` |
+| `qwen3-tts-1.7b-design` | Qwen3-TTS (12 kHz) | voice_design | no | yes | en, zh, ja, ko | voice synthesized from NL description in `instructions` (required) |
 
 Pick by use case:
-- **General-purpose multi-voice TTS:** `kokoro-82m` — fast, 41 baked voices, runs on CPU.
-- **Voice cloning from a reference clip:** `qwen3-tts-0.6b` — drop a `.wav` into `/data/custom-voices/`, immediately usable. CUDA required.
+- **General-purpose multi-voice TTS:** `kokoro-82m` — fast, 41 baked voices, runs on CPU. Use `kokoro-82m-nvidia` for the ONNX/ORT execution path (CUDA EP on the CUDA image, CPU EP otherwise).
+- **Voice cloning from a reference clip:** `qwen3-tts-0.6b` / `qwen3-tts-1.7b` — drop a `.wav` into `/data/custom-voices/`, immediately usable. CUDA required.
+- **Preset speakers (no reference WAV):** `qwen3-tts-0.6b-custom` / `qwen3-tts-1.7b-custom` — 9 baked speakers; the 1.7B honours `instructions` for emotion. CUDA required.
+- **Invent a voice from a description:** `qwen3-tts-1.7b-design` — the NL description goes in `instructions`. CUDA required.
 
 `canary-qwen-2.5b` produces no segment/word timestamps — `verbose_json.segments` and `.words` come back empty, `srt`/`vtt` collapse to a single full-duration cue. Transcription itself is whole-file. Use a Whisper or Canary multitask slug if you need timing.
 
@@ -271,12 +281,25 @@ curl -s $TALKIES_URL/v1/audio/speech \
 
 | Field | Required | Default | Notes |
 |---|---|---|---|
-| `model` | yes | — | TTS model slug. `kokoro-82m` or `qwen3-tts-0.6b`. Unknown → 404. ASR slug → 400. |
+| `model` | yes | — | TTS model slug. Kokoro: `kokoro-82m`, `kokoro-82m-nvidia`. Qwen3-TTS: `qwen3-tts-0.6b`, `qwen3-tts-1.7b` (base/cloning), `qwen3-tts-0.6b-custom`, `qwen3-tts-1.7b-custom` (preset speakers), `qwen3-tts-1.7b-design` (voice from NL description). Unknown → 404. ASR slug → 400. |
 | `input` | yes | — | Text to synthesize. Empty / whitespace-only → 400. No fixed length cap; for very long inputs split client-side. |
-| `voice` | no | model `default_voice` (`af_heart` for `kokoro-82m`; `alloy` for `qwen3-tts-0.6b`) | Voice catalog per model — call `GET /v1/audio/voices` and filter by `.model`. Unknown → 400 with catalog listed. |
+| `voice` | no | model `default_voice` | Semantics shift per Qwen3 mode (see [Qwen3-TTS Modes](#qwen3-tts-modes)). Kokoro: voice name (default `af_heart`). Qwen3 `base`: path of a reference WAV (default `alloy`). Qwen3 `custom_voice`: one of the 9 preset speakers (default `Vivian`). Qwen3 `voice_design`: ignored — sentinel `"design"`. Unknown → 400 with catalog listed. |
 | `response_format` | no | `mp3` | `mp3` / `opus` / `aac` / `flac` / `wav` / `pcm`. |
-| `speed` | no | `1.0` | Playback rate, Kokoro only. Clamped to `[0.25, 4.0]`. **Ignored** by `qwen3-tts-0.6b` (no speed control in Qwen3-TTS). |
-| `instructions` | no | — | **Accepted, ignored** (neither engine has an instruction-conditioning input). |
+| `speed` | no | `1.0` | Playback rate, Kokoro only. Clamped to `[0.25, 4.0]`. **Ignored** by every Qwen3-TTS slug (no speed control in Qwen3-TTS). |
+| `instructions` | no | — | Free-form style prompt. **Required** for `qwen3-tts-1.7b-design` (the NL voice description; empty → 400). **Honoured** by Qwen3-TTS `base` mode and `qwen3-tts-1.7b-custom` (threaded as `instruct`). **Dropped** by `qwen3-tts-0.6b-custom` (0.6B CustomVoice checkpoint limitation — logs a WARNING) and both Kokoro slugs (no instruction input). Accepted on every slug for OpenAI parity. |
+| `language` | no | model `default_language` (`English`) | **Non-OpenAI extra field** (send via `extra_body={"language": "..."}` on official SDKs). Selects the spoken language for Qwen3 `custom_voice` / `voice_design`; `base` mode reads it from the voice's sibling `.lang` file. Silently ignored by Kokoro. |
+
+### Qwen3-TTS Modes
+
+The Qwen3-TTS mode is implicit in the model slug — the OpenAI wire format stays pure (`model` / `voice` / `instructions` / `input`), with `voice` and `instructions` carrying mode-specific semantics. No new endpoints.
+
+| Mode | Slugs | What `voice` means | What `instructions` means |
+|---|---|---|---|
+| **base** (voice cloning) | `qwen3-tts-0.6b`, `qwen3-tts-1.7b` | Path of a reference `.wav` under the voices dirs (`.wav` stripped) | Optional style hint (passed as `instruct`) |
+| **custom_voice** (preset speakers) | `qwen3-tts-0.6b-custom`, `qwen3-tts-1.7b-custom` | One of 9 preset speaker names | Emotion / style cue — 1.7B honours it; 0.6B drops it (checkpoint limitation, logs a WARNING) |
+| **voice_design** (NL description) | `qwen3-tts-1.7b-design` | Ignored — sentinel `"design"` | **Required.** NL description of the voice (e.g. "A warm, friendly young female voice"). Empty → 400. |
+
+The 9 `custom_voice` preset speakers (also returned by `GET /v1/audio/voices` for the chosen slug): `Vivian`, `Serena`, `Uncle_Fu`, `Dylan`, `Eric` (Chinese), `Ryan`, `Aiden` (English), `Ono_Anna` (Japanese), `Sohee` (Korean).
 
 ### Output Formats
 

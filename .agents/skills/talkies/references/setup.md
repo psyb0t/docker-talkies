@@ -13,7 +13,7 @@
 
 ### CPU
 
-Serves 3× Whisper + `canary-180m-flash` for ASR, plus `kokoro-82m` for TTS. The CUDA-only ASR models aren't worth running on CPU, and `qwen3-tts-0.6b` is CUDA-only.
+Serves 3× Whisper + `canary-180m-flash` + `nemotron-3.5-asr-0.6b` (CPU-optimized, via parakeet.cpp) for ASR, plus `kokoro-82m` and `kokoro-82m-nvidia` for TTS. The CUDA-only ASR models aren't worth running on CPU, and the Qwen3-TTS family is CUDA-only.
 
 ```bash
 docker run -d --name talkies \
@@ -24,7 +24,7 @@ docker run -d --name talkies \
 
 ### CUDA
 
-Serves all seven ASR models plus both TTS engines (`kokoro-82m`, `qwen3-tts-0.6b`). Requires the NVIDIA Container Toolkit on the host.
+Serves all eight ASR models plus both TTS engines / 3 backends (`kokoro-82m`, `kokoro-82m-nvidia`, and the 5 Qwen3-TTS slugs). Requires the NVIDIA Container Toolkit on the host.
 
 ```bash
 docker run -d --name talkies \
@@ -44,8 +44,8 @@ The CUDA image also runs without `--gpus all` — it binds to CPU, ignores CUDA 
 
 | Image | Tag | Platforms | Models served | Image size |
 |---|---|---|---|---|
-| CPU | `psyb0t/talkies:latest` | `linux/amd64` | 3× Whisper, 1× Canary-180m-Flash, Kokoro-82M | ~3 GB |
-| CUDA | `psyb0t/talkies:latest-cuda` | `linux/amd64` | all seven ASR + Kokoro-82M + Qwen3-TTS-0.6B | ~11 GB |
+| CPU | `psyb0t/talkies:latest` | `linux/amd64` | 3× Whisper, Canary-180m-Flash, Nemotron-3.5-ASR (parakeet.cpp), Kokoro-82M ×2 runtimes | ~3 GB |
+| CUDA | `psyb0t/talkies:latest-cuda` | `linux/amd64` | all eight ASR + Kokoro-82M ×2 runtimes + Qwen3-TTS ×5 | ~11 GB |
 
 The CPU image only ships ASR models that actually finish in a sane time without a GPU. Parakeet-TDT is autoregressive (slow on CPU). Canary-1B and Canary-Qwen-2.5B are flat-out too big. Use the CUDA image for those even if you mostly run on CPU — it gracefully falls back (except for `qwen3-tts-0.6b`, which hard-fails on non-CUDA). Kokoro-82M ships in both images — at 82M params it synthesizes faster than real-time on a 4-core CPU, no GPU needed.
 
@@ -212,7 +212,7 @@ File structure:
 | Field | Required | Notes |
 |---|---|---|
 | `repo` | yes | HuggingFace repo id. Pulled via `snapshot_download(local_dir=$TALKIES_DATA_DIR/models/<slug>)` — flat directory keyed by slug, no HF cache indirection. |
-| `executor` | yes | One of `whisper`, `parakeet`, `canary_multitask`, `canary_salm`, `kokoro`, `qwen3_tts`. Other values fail startup. |
+| `executor` | yes | One of `whisper`, `parakeet`, `parakeet_cpp`, `canary_multitask`, `canary_salm`, `kokoro`, `kokoro_nvidia`, `qwen3_tts`. Other values fail startup. |
 | `modality` | no | `asr` (default) or `tts`. Drives endpoint guards (`/v1/audio/transcriptions` requires ASR; `/v1/audio/speech` requires TTS) and the `modality` field on `/v1/models` entries. The `kokoro` and `qwen3_tts` executors imply `tts`; the four ASR executors imply `asr`. |
 | `default_source_lang` | no | ASR only. Used when the request omits `language`. |
 | `default_target_lang` | no | ASR only. Used by Canary multitask for translation tasks. |
