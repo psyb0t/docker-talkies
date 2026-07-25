@@ -4,6 +4,13 @@ All notable changes per release. Versions follow [semver](https://semver.org)
 pre-1.0 conventions: minor bumps may include breaking changes (called out
 explicitly with **Breaking.**), patch bumps are docs / build / fixes only.
 
+## v0.11.0 — 2026-07-25
+
+ClawHub plugin + skill accuracy/security pass. No service change.
+
+- **New `@psyb0t/talkies` code plugin** (`.agents/plugins/talkies/`) — a stdio↔HTTP MCP bridge (`mcp-remote`) to the box's `/v1/mcp` endpoint. MIT-licensed. CI publishes it alongside the skill via `clawhub-publish.yml`.
+- **Skill hardening + accuracy** (verified against source): added a Security & safety capability declaration, a server-side URL-fetch warning, and staged-file persistence notes; corrected the ASR model count (7 on the CUDA/registry image), the Qwen3-TTS 24 kHz sample rate, the documented sampling params (`temperature`/`top_k`/`top_p`/`repetition_penalty`/`max_new_tokens`/`do_sample`), the Qwen3-TTS PCM streaming surface, and env vars `TALKIES_QWEN3_STREAM_CHUNK_SIZE` / `TALKIES_LOG_LEVEL`.
+
 ## v0.10.1 — 2026-07-24
 
 Skill packaging + docs. No service change.

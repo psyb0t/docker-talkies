@@ -13,7 +13,7 @@
 
 ### CPU
 
-Serves 3× Whisper + `canary-180m-flash` + `nemotron-3.5-asr-0.6b` (CPU-optimized, via parakeet.cpp) for ASR, plus `kokoro-82m` and `kokoro-82m-nvidia` for TTS. The CUDA-only ASR models aren't worth running on CPU, and the Qwen3-TTS family is CUDA-only.
+Serves 2× Whisper + `canary-180m-flash` + `nemotron-3.5-asr-0.6b` (CPU-optimized, via parakeet.cpp) for ASR, plus `kokoro-82m` and `kokoro-82m-nvidia` for TTS. The CUDA-only ASR models aren't worth running on CPU, and the Qwen3-TTS family is CUDA-only.
 
 ```bash
 docker run -d --name talkies \
@@ -24,7 +24,7 @@ docker run -d --name talkies \
 
 ### CUDA
 
-Serves all eight ASR models plus both TTS engines / 3 backends (`kokoro-82m`, `kokoro-82m-nvidia`, and the 5 Qwen3-TTS slugs). Requires the NVIDIA Container Toolkit on the host.
+Serves all seven ASR models plus both TTS engines / 3 backends (`kokoro-82m`, `kokoro-82m-nvidia`, and the 5 Qwen3-TTS slugs). Requires the NVIDIA Container Toolkit on the host.
 
 ```bash
 docker run -d --name talkies \
@@ -44,8 +44,8 @@ The CUDA image also runs without `--gpus all` — it binds to CPU, ignores CUDA 
 
 | Image | Tag | Platforms | Models served | Image size |
 |---|---|---|---|---|
-| CPU | `psyb0t/talkies:latest` | `linux/amd64` | 3× Whisper, Canary-180m-Flash, Nemotron-3.5-ASR (parakeet.cpp), Kokoro-82M ×2 runtimes | ~3 GB |
-| CUDA | `psyb0t/talkies:latest-cuda` | `linux/amd64` | all eight ASR + Kokoro-82M ×2 runtimes + Qwen3-TTS ×5 | ~11 GB |
+| CPU | `psyb0t/talkies:latest` | `linux/amd64` | 2× Whisper, Canary-180m-Flash, Nemotron-3.5-ASR (parakeet.cpp), Kokoro-82M ×2 runtimes | ~3 GB |
+| CUDA | `psyb0t/talkies:latest-cuda` | `linux/amd64` | all seven ASR + Kokoro-82M ×2 runtimes + Qwen3-TTS ×5 | ~11 GB |
 
 The CPU image only ships ASR models that actually finish in a sane time without a GPU. Parakeet-TDT is autoregressive (slow on CPU). Canary-1B and Canary-Qwen-2.5B are flat-out too big. Use the CUDA image for those even if you mostly run on CPU — it gracefully falls back (except for `qwen3-tts-0.6b`, which hard-fails on non-CUDA). Kokoro-82M ships in both images — at 82M params it synthesizes faster than real-time on a 4-core CPU, no GPU needed.
 
@@ -81,6 +81,8 @@ Container binds `0.0.0.0:8000` unconditionally. Control network exposure at `doc
 |---|---|---|
 | `TALKIES_DATA_DIR` | `/data` | Base data dir. Model snapshots → `$TALKIES_DATA_DIR/models/<slug>/` (flat per-model dirs, no HF cache layout). Staged uploads + URL downloads → `$TALKIES_DATA_DIR/files/`. Qwen3-TTS custom clone voices → `$TALKIES_DATA_DIR/custom-voices/` (nested subdirs preserved as voice names). Bind-mount to persist across restarts. |
 
+**Security note on `$TALKIES_DATA_DIR/files/`:** staged uploads and cached URL downloads persist here **indefinitely** — nothing auto-expires them — and are enumerable by any caller via `GET /v1/files` (no per-caller isolation; see [Server-Side File Staging](../SKILL.md#server-side-file-staging-v1files) in SKILL.md). Deploy with `TALKIES_AUTH_TOKEN` set and least-privilege network exposure if the deployment isn't fully trusted, and clean up staged files (`DELETE /v1/files/{path}`) once you're done with them.
+
 ### Lifecycle (idle sweeper + load timeouts)
 
 | Var | Default | What it does |
@@ -108,6 +110,18 @@ Audio longer than `TALKIES_VAD_CHUNK_THRESHOLD` seconds gets sliced through Sile
 | `TALKIES_VAD_MIN_SILENCE_MS` | `500` | Silero VAD param — minimum gap (ms) to consider a region break. |
 | `TALKIES_VAD_SPEECH_PAD_MS` | `200` | Silero VAD param — silence padding (ms) around each detected speech region. |
 | `TALKIES_VAD_THRESHOLD` | `0.5` | Silero VAD speech-probability threshold. Lower = more aggressive. |
+
+### Qwen3-TTS streaming
+
+| Var | Default | What it does |
+|---|---|---|
+| `TALKIES_QWEN3_STREAM_CHUNK_SIZE` | `8` | Codec steps decoded per yielded chunk when `response_format=pcm` streams from a `qwen3_tts` backend (~1 s of audio per 12 steps). Only relevant to that streaming path. |
+
+### Logging
+
+| Var | Default | What it does |
+|---|---|---|
+| `TALKIES_LOG_LEVEL` (falls back to `LOG_LEVEL`) | `info` | `debug` / `info` / `warn` / `error` / `fatal` (case-insensitive; `warning` / `critical` also accepted). Unrecognized values fail fast at startup. JSON structured logs on stdout. **`debug` logs full request/response bodies** (TTS input text, cloned-voice reference transcripts, ASR transcripts) — PII; a one-time WARNING fires at startup when active. |
 
 ### Internal
 
