@@ -81,7 +81,7 @@ Container binds `0.0.0.0:8000` unconditionally. Control network exposure at `doc
 |---|---|---|
 | `TALKIES_DATA_DIR` | `/data` | Base data dir. Model snapshots → `$TALKIES_DATA_DIR/models/<slug>/` (flat per-model dirs, no HF cache layout). Staged uploads + URL downloads → `$TALKIES_DATA_DIR/files/`. Qwen3-TTS custom clone voices → `$TALKIES_DATA_DIR/custom-voices/` (nested subdirs preserved as voice names). Bind-mount to persist across restarts. |
 
-**Security note on `$TALKIES_DATA_DIR/files/`:** staged uploads and cached URL downloads persist here **indefinitely** — nothing auto-expires them — and are enumerable by any caller via `GET /v1/files` (no per-caller isolation; see [Server-Side File Staging](../SKILL.md#server-side-file-staging-v1files) in SKILL.md). Deploy with `TALKIES_AUTH_TOKEN` set and least-privilege network exposure if the deployment isn't fully trusted, and clean up staged files (`DELETE /v1/files/{path}`) once you're done with them.
+**Security note on `$TALKIES_DATA_DIR/files/`:** staged uploads and cached URL downloads persist here **indefinitely** — nothing auto-expires them — and are enumerable by any caller via `GET /v1/files` (no per-caller isolation; see [Server-Side File Staging](../SKILL.md#server-side-file-staging-v1files) in SKILL.md). This is a shared bucket: an agent must only read/delete paths it staged itself, must never enumerate or delete other callers' files, and should clean up after its own workflow. Deploy with `TALKIES_AUTH_TOKEN` set by default, add per-caller isolation and retention limits at the deployment/proxy level if the deployment isn't fully trusted, and least-privilege network exposure otherwise.
 
 ### Lifecycle (idle sweeper + load timeouts)
 
@@ -286,6 +286,8 @@ Equivalent to setting `TALKIES_ENABLED_MODELS=whisper-large-v3-turbo` against th
 
 ## Qwen3-TTS Custom Voices
 
+**Acceptable use:** only supply reference voice samples you're authorized to process, and only with the speaker's informed consent. Voice cloning reproduces someone's actual timbre/prosody — never use it to impersonate a real person without consent, or for fraud, deception, or any form of unauthorized voice replication.
+
 `qwen3-tts-0.6b` is a voice-cloning TTS — it takes a reference `.wav` and clones the speaker's timbre / prosody onto whatever text you supply. The voice catalog is built from two on-disk dirs that are merged at request time (live, no restart):
 
 | Dir | Where it lives | Origin tag | Purpose |
@@ -391,7 +393,9 @@ curl -s -X POST http://localhost:8000/unload | jq
 - `INFO talkies.server` lines on each request — model load events, transcribe timings.
 - `WARNING` / `ERROR` lines for backend failures.
 
-The server doesn't log auth tokens, request bodies, or audio bytes. It logs the model slug, request id, duration, and result size — nothing else.
+At `info` (default) and above, the server does not log auth tokens, request/response bodies, or audio bytes — it logs the model slug, request id, duration, and result size.
+
+**At `debug`, this changes: full request/response content is logged**, including TTS input text + `instructions`, cloned-voice reference transcripts, and ASR transcripts (`src/talkies/server.py` request/response `log.debug(...)` calls, gated behind `log.isEnabledFor(logging.DEBUG)`). This is PII. A one-time WARNING fires at startup when `TALKIES_LOG_LEVEL=debug` is active (`src/talkies/logging.py`). **Never run `debug` level in production against real user data** — use it only for local troubleshooting with synthetic/throwaway input.
 
 ## Public Access via Reverse Proxy (optional)
 

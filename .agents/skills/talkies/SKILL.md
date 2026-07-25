@@ -3,6 +3,10 @@ name: talkies
 description: Self-hosted OpenAI-compatible speech service. /v1/audio/transcriptions fronts seven open ASR models (Whisper, Parakeet, Nemotron-3.5-ASR, Canary); /v1/audio/speech fronts 2 TTS engines / 3 backends — Kokoro-82M (41 baked voices, PyTorch + ONNX runtimes) and the CUDA-only Qwen3-TTS family (voice cloning, preset speakers, voice design). Same wire format as OpenAI — change the base URL + slug. Stereo diarization, URL fetching, MCP endpoint, bearer auth.
 homepage: https://github.com/psyb0t/docker-talkies
 user-invocable: true
+permissions:
+  - network: outbound HTTP to the configured TALKIES_URL; the talkies SERVER also performs its own outbound fetch when a URL is passed as file_path (server-side download, not client-side)
+  - shell: documented setup/workflow examples invoke local curl / ffmpeg / docker
+  - filesystem: reads/writes server-side staged files via the /v1/files endpoints (list/put/get/delete); no local filesystem access by this skill itself
 metadata:
   { "openclaw": { "emoji": "🎙️", "primaryEnv": "TALKIES_URL", "requires": { "bins": ["docker", "curl"] } } }
 ---
@@ -37,7 +41,7 @@ This skill is **not** low-risk to orchestrate blindly — it issues local shell 
 - Stereo two-mic recordings → per-speaker diarized output (`L:` / `R:` channel tagging).
 - German/French/Spanish ↔ English speech-to-text translation via Canary-1B-Flash.
 - Synthesize speech from text via Kokoro-82M — English (American + British), Spanish, French, Hindi, Italian, Portuguese.
-- Voice-clone speech via Qwen3-TTS-0.6B from a reference `.wav` you provide — drop into `/data/custom-voices/`, immediately appears under `GET /v1/audio/voices` with `origin=custom`.
+- Voice-clone speech via Qwen3-TTS-0.6B from a reference `.wav` you provide — drop into `/data/custom-voices/`, immediately appears under `GET /v1/audio/voices` with `origin=custom`. **Only clone voices you're authorized to use, with the speaker's consent** — see [Qwen3-TTS Custom Voices](references/setup.md#qwen3-tts-custom-voices).
 - Drop-in replacement for `api.openai.com/v1/audio/transcriptions` and `api.openai.com/v1/audio/speech` in existing client code.
 
 ## When NOT To Use
@@ -423,8 +427,10 @@ talkies mirrors a subset of [speaches](https://github.com/speaches-ai/speaches) 
 | `GET /healthz` | Unauthenticated liveness. Returns `{ok, device, models}`. |
 | `GET /v1/models` | OpenAI-style list of configured slugs. Each entry includes a `modality` field (`asr` or `tts`) so clients can filter. |
 | `GET /api/ps` | Currently-loaded models with per-model `idle_seconds`. |
-| `DELETE /api/ps/{model_id}` | Evict one model. Slug can be URL-encoded (`/` → `%2F`). 404 if not loaded. |
-| `POST /unload` | Evict every loaded model. Returns the list actually unloaded. |
+| `DELETE /api/ps/{model_id}` | **Destructive.** Evict one model. Slug can be URL-encoded (`/` → `%2F`). 404 if not loaded. |
+| `POST /unload` | **Destructive.** Evict every loaded model. Returns the list actually unloaded. |
+
+**Guardrail: do not call `DELETE /api/ps/{model_id}` or `POST /unload` on your own initiative.** Both force-evict resident model(s) — anyone else's in-flight or about-to-run request pays a cold-load penalty as a result — and, like every route here, auth is only enforced when `TALKIES_AUTH_TOKEN` happens to be set. Only call these when the user explicitly asked for administrative/maintenance action (e.g. "free up VRAM", "unload everything"). For deployments shared with other callers, require `TALKIES_AUTH_TOKEN` and don't expose these routes on an unauthenticated network.
 
 Behind these: an **idle sweeper** runs every `TALKIES_SWEEPER_INTERVAL` s (default 60) and unloads anything not used in `TALKIES_MODEL_TTL` s (default 600). Set `TALKIES_MODEL_TTL=0` to disable.
 
@@ -446,6 +452,13 @@ curl -s -X POST $TALKIES_URL/unload | jq
 For repeated transcribes of the same file (different `response_format`, different model, iterating on params), stage the file once and reference it by path. Files land under `${TALKIES_DATA_DIR}/files/<path>`.
 
 **Staged files persist until explicitly deleted** — nothing auto-expires them — and `GET /v1/files` enumerates every staged path to anyone who can reach the API. Don't stage sensitive/private media on a server without auth enabled (`TALKIES_AUTH_TOKEN`); clean up (`DELETE /v1/files/{path}`) when done.
+
+**Guardrail — this is a shared, unisolated bucket, not a private workspace.** There's no per-caller ownership: any path any caller staged is listable and readable by any other caller with API access. An agent must:
+- only read or delete paths it staged itself in the current, user-approved workflow;
+- never call `GET /v1/files` to browse/enumerate what other callers have staged, and never delete a path it didn't create;
+- clean up (`DELETE /v1/files/{path}`) what it staged once the workflow is done, since nothing expires automatically.
+
+At the deployment level: require `TALKIES_AUTH_TOKEN` by default, treat per-caller isolation and retention limits as the operator's responsibility (talkies itself provides neither).
 
 | Endpoint | Behavior |
 |---|---|

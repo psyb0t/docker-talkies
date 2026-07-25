@@ -4,6 +4,16 @@ All notable changes per release. Versions follow [semver](https://semver.org)
 pre-1.0 conventions: minor bumps may include breaking changes (called out
 explicitly with **Breaking.**), patch bumps are docs / build / fixes only.
 
+## v0.11.1 — 2026-07-25
+
+Skill security hardening — clears the ClawHub SkillSpector DO_NOT_INSTALL rating. Docs only, no service change.
+
+- Declared a `permissions:` capability block (network / shell / filesystem) in the skill frontmatter.
+- Marked the destructive `DELETE /api/ps/{model_id}` model-eviction endpoint (+ `POST /unload`) and added an agent guardrail against unsolicited calls.
+- Added `/v1/files` staging guardrails (only touch self-created paths; no enumerating/deleting other callers'; clean up), mirrored in `references/setup.md`.
+- Fixed a logging-doc contradiction: DEBUG logs full request/response bodies (TTS input, ASR transcripts) while normal levels don't — never enable debug in production with real data.
+- Added a voice-cloning acceptable-use / consent warning near the custom-voices section.
+
 ## v0.11.0 — 2026-07-25
 
 ClawHub plugin + skill accuracy/security pass. No service change.
