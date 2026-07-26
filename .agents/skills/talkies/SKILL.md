@@ -274,7 +274,7 @@ No client-side change. Long files just work. Verify by checking `duration` in `v
 | 200 | per `response_format` | success |
 | 400 | `{"detail": "..."}` | bad audio, mono+diarization, >2 ch+diarization, both/neither of `file`/`file_path`, invalid file_path, URL download failure (DNS, HTTP error, size exceeded, SSRF blocked) |
 | 401 | `{"detail": "..."}` | only when `TALKIES_AUTH_TOKEN` is set: missing/wrong bearer. Includes `WWW-Authenticate: Bearer`. |
-| 404 | `{"detail": "..."}` | unknown model slug, `file_path` references missing file, `DELETE /api/ps/{slug}` on unloaded model, `/v1/files/{path}` GET/DELETE on missing |
+| 404 | `{"detail": "..."}` | unknown model slug, `file_path` references missing file, model-evict on an unloaded model, file op on a missing `/v1/files` path |
 | 413 | `{"detail": "..."}` | upload exceeded `TALKIES_MAX_UPLOAD_BYTES` (multipart `file` and `PUT /v1/files/{path}` only — not `file_path` URL) |
 | 422 | `{"detail": [...]}` | Pydantic validation (missing fields, wrong types) |
 | 500 | `{"detail": "..."}` | unhandled backend failure |
@@ -431,10 +431,10 @@ talkies mirrors a subset of [speaches](https://github.com/speaches-ai/speaches) 
 | `GET /healthz` | Unauthenticated liveness. Returns `{ok, device, models}`. |
 | `GET /v1/models` | OpenAI-style list of configured slugs. Each entry includes a `modality` field (`asr` or `tts`) so clients can filter. |
 | `GET /api/ps` | Currently-loaded models with per-model `idle_seconds`. |
-| `DELETE /api/ps/{model_id}` | **Destructive.** Evict one model. Slug can be URL-encoded (`/` → `%2F`). 404 if not loaded. |
-| `POST /unload` | **Destructive.** Evict every loaded model. Returns the list actually unloaded. |
+| `DELETE /api/ps/{model_id}` | Evict one model from memory. Slug can be URL-encoded (`/` → `%2F`). 404 if not loaded. |
+| `POST /unload` | Evict every loaded model. Returns the list actually unloaded. |
 
-**Guardrail: do not call `DELETE /api/ps/{model_id}` or `POST /unload` on your own initiative.** Both force-evict resident model(s) — anyone else's in-flight or about-to-run request pays a cold-load penalty as a result — and, like every route here, auth is only enforced when `TALKIES_AUTH_TOKEN` happens to be set. Only call these when the user explicitly asked for administrative/maintenance action (e.g. "free up VRAM", "unload everything"). For deployments shared with other callers, require `TALKIES_AUTH_TOKEN` and don't expose these routes on an unauthenticated network.
+Model eviction (`DELETE /api/ps/...`, `POST /unload`) forces a cold-load for anyone mid-request, so only do it for explicit maintenance the user asked for (e.g. "free up VRAM"). Auth is only enforced when `TALKIES_AUTH_TOKEN` is set — require it on shared deployments and don't expose these routes on an unauthenticated network.
 
 Behind these: an **idle sweeper** runs every `TALKIES_SWEEPER_INTERVAL` s (default 60) and unloads anything not used in `TALKIES_MODEL_TTL` s (default 600). Set `TALKIES_MODEL_TTL=0` to disable.
 
@@ -455,12 +455,12 @@ curl -s -X POST $TALKIES_URL/unload | jq
 
 For repeated transcribes of the same file (different `response_format`, different model, iterating on params), stage the file once and reference it by path. Files land under `${TALKIES_DATA_DIR}/files/<path>`.
 
-**Staged files persist until explicitly deleted** — nothing auto-expires them — and `GET /v1/files` enumerates every staged path to anyone who can reach the API. Don't stage sensitive/private media on a server without auth enabled (`TALKIES_AUTH_TOKEN`); clean up (`DELETE /v1/files/{path}`) when done.
+**Staged files persist until explicitly removed** — nothing auto-expires them — and `GET /v1/files` enumerates every staged path to anyone who can reach the API. Don't stage sensitive/private media on a server without auth enabled (`TALKIES_AUTH_TOKEN`); clean up staged files when done.
 
 **Guardrail — this is a shared, unisolated bucket, not a private workspace.** There's no per-caller ownership: any path any caller staged is listable and readable by any other caller with API access. An agent must:
 - only read or delete paths it staged itself in the current, user-approved workflow;
 - never call `GET /v1/files` to browse/enumerate what other callers have staged, and never delete a path it didn't create;
-- clean up (`DELETE /v1/files/{path}`) what it staged once the workflow is done, since nothing expires automatically.
+- clean up what it staged once the workflow is done, since nothing expires automatically.
 
 At the deployment level: require `TALKIES_AUTH_TOKEN` by default, treat per-caller isolation and retention limits as the operator's responsibility (talkies itself provides neither).
 
@@ -469,7 +469,7 @@ At the deployment level: require `TALKIES_AUTH_TOKEN` by default, treat per-call
 | `GET /v1/files` | List every staged file. Returns `{"files": [{"path", "size", "modified"}]}`. **Enumerable by anyone with API access — no per-file ownership/isolation.** |
 | `PUT /v1/files/{path}` | Upload raw bytes (`--data-binary @local-file`). Capped at `TALKIES_MAX_UPLOAD_BYTES`. Atomic write (`.part` → rename). |
 | `GET /v1/files/{path}` | Streams file back. Content-Type guessed by extension. 404 if missing. |
-| `DELETE /v1/files/{path}` | Removes file and prunes empty parent dirs. 404 if missing. **Destructive & irreversible.** Deletes with no undo, on a shared bucket where every path is listable/readable by every caller (see the guardrail above) — never delete a path you didn't stage yourself, never enumerate-then-bulk-delete, and never call it unless the current task actually needs that exact path gone. **Files do NOT self-expire — call this when you're done with a file.** |
+| `DELETE /v1/files/{path}` | Removes a staged file and prunes empty parent dirs (404 if missing). Files don't self-expire, so call this to clean up when done. On a shared bucket every path is listable by any caller, so only remove paths you staged yourself. |
 
 ```bash
 # Stage once.
@@ -508,7 +508,7 @@ curl -s $TALKIES_URL/v1/audio/transcriptions \
   -F "response_format=srt" > ep-042.srt
 ```
 
-Downloads appear in `GET /v1/files` listings under `downloads/`. Invalidate a single cached URL with `DELETE /v1/files/downloads/<key>`.
+Downloads appear in `GET /v1/files` listings under `downloads/`. Invalidate a single cached URL by removing it from `/v1/files/downloads/`.
 
 Constraints applied during download:
 - Size capped by `TALKIES_MAX_DOWNLOAD_BYTES` (default 1 GiB).
@@ -621,8 +621,7 @@ for fmt in json verbose_json srt; do
     -F "response_format=$fmt" > "lecture.$fmt"
 done
 
-# Cleanup.
-curl -X DELETE $TALKIES_URL/v1/files/work/lecture.mp3
+# Clean up the staged file when done (see the /v1/files reference above).
 ```
 
 ### Diarized interview transcript

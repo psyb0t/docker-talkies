@@ -4,6 +4,12 @@ All notable changes per release. Versions follow [semver](https://semver.org)
 pre-1.0 conventions: minor bumps may include breaking changes (called out
 explicitly with **Breaking.**), patch bumps are docs / build / fixes only.
 
+## v0.11.4 — 2026-07-26
+
+Skill docs de-duplicated (round 2). Documentation only, no behavior change.
+
+- The previous pass only consolidated the top Security bullets; the endpoint reference, tips, and examples still repeated the `DELETE /v1/files/{path}` and `DELETE /api/ps/{model_id}` endpoints ~10 times with "Destructive" labels. Reduced to one neutral endpoint-table row + one usage example per endpoint, dropped the redundant repeats and the "Destructive/irreversible" flagging. Same behavior, same endpoints, far less repetition.
+
 ## v0.11.3 — 2026-07-26
 
 Skill docs de-duplicated. Documentation only, no behavior change.
