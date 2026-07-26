@@ -119,3 +119,4 @@ scripts/
 # Build cache from the local parakeet.cpp checkout (if cloned at root for
 # debugging) — never ships.
 parakeet.cpp/
+.telemetry/

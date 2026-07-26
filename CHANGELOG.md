@@ -4,6 +4,12 @@ All notable changes per release. Versions follow [semver](https://semver.org)
 pre-1.0 conventions: minor bumps may include breaking changes (called out
 explicitly with **Breaking.**), patch bumps are docs / build / fixes only.
 
+## v0.11.5 — 2026-07-26
+
+Third-party license notices. Documentation only, no behavior change.
+
+- Added `THIRD_PARTY.md` + `LICENSES/` documenting the GPL-3.0-or-later espeak-ng runtime dependency of the Kokoro TTS backend, and the three Qwen3-TTS reference voice samples under `voices/qwen3/` (MIT — byte-identical copies of faster-qwen3-tts's `ref_audio*.wav`). The project's own code stays WTFPL.
+
 ## v0.11.4 — 2026-07-26
 
 Skill docs de-duplicated (round 2). Documentation only, no behavior change.
