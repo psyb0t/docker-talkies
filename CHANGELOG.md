@@ -4,6 +4,13 @@ All notable changes per release. Versions follow [semver](https://semver.org)
 pre-1.0 conventions: minor bumps may include breaking changes (called out
 explicitly with **Breaking.**), patch bumps are docs / build / fixes only.
 
+## v0.11.2 — 2026-07-26
+
+Skill security-documentation hardening. Docs only, no service or behavior change.
+
+- Hardened the skill docs with explicit destructive-operation guardrails on `DELETE /v1/files/{path}` (shared, unisolated staging namespace — no undo, no per-caller ownership) and an auth/exfil warning summarizing that TTS `input` text and voice-cloning reference samples leave your host via `$TALKIES_URL`.
+- Rolled both points, plus the existing voice-cloning consent note, into the top-level "Security & safety" summary so agents see them before reaching the detailed sections.
+
 ## v0.11.1 — 2026-07-25
 
 Skill security hardening — clears the ClawHub SkillSpector DO_NOT_INSTALL rating. Docs only, no service change.

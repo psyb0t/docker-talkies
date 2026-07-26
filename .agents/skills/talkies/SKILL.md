@@ -27,10 +27,12 @@ For installation, configuration, and container setup, see [references/setup.md](
 
 This skill is **not** low-risk to orchestrate blindly — it issues local shell commands (`curl`, `ffmpeg`, `docker` in the typical deployment/setup path) and outbound HTTP requests to whatever `$TALKIES_URL` points at:
 
-- **Outbound HTTP to an operator-chosen host.** Every command in this skill hits `$TALKIES_URL` — a server the skill does not control or vet. Point it only at an instance you run or trust.
+- **Outbound HTTP to an operator-chosen host — data leaves your host.** Every command in this skill, including TTS `input` text and voice-cloning reference samples, is sent to whatever `$TALKIES_URL` points at — a server the skill does not control or vet. Point it only at an instance you run or explicitly trust; prefer HTTPS.
 - **`file_path` URL fetches happen server-side, not client-side.** Passing a URL causes the *talkies server* to download it — see [URL `file_path` (Download + Cache)](#url-file_path-download--cache) below.
 - **Staged files persist server-side until explicitly deleted**, and are enumerable by anyone who can reach the API — see [Server-Side File Staging](#server-side-file-staging-v1files) below.
-- **No auth by default.** `TALKIES_AUTH_TOKEN` is opt-in; an unconfigured server is wide open to anyone who can reach the port. Treat this skill as requiring auth + least-privilege network exposure in any non-trusted environment.
+- **`DELETE /v1/files/{path}` is destructive & irreversible on a shared, unisolated namespace.** Any caller can list/read/delete any other caller's staged files — there's no per-caller ownership. Only delete paths you staged yourself in the current task; never enumerate-then-bulk-delete; treat it as admin-only on a shared/multi-tenant instance — see [Server-Side File Staging](#server-side-file-staging-v1files) below.
+- **No auth by default.** `TALKIES_AUTH_TOKEN` is opt-in; an unconfigured server is wide open (unauthenticated) to anyone who can reach the port, including the destructive eviction and file-delete routes. Treat this skill as requiring auth + least-privilege network exposure in any non-trusted environment.
+- **Voice cloning requires consent.** Only clone or synthesize a voice you have explicit authorization/consent to use — synthesized speech of a real person can be used for impersonation, fraud, or deception. See [Qwen3-TTS Custom Voices](references/setup.md#qwen3-tts-custom-voices).
 - **Local shell execution.** `references/setup.md` and workflow examples run `docker`, `curl`, and `ffmpeg` directly on the local host — review commands before running them against unfamiliar hosts/images.
 
 ## When To Use
@@ -281,6 +283,8 @@ No client-side change. Long files just work. Verify by checking `duration` in `v
 
 JSON body (not multipart). Returns the encoded audio bytes in the body with the matching `Content-Type` — no JSON envelope.
 
+**Every call sends your `input` text (and, for voice-cloning slugs, the referenced voice sample) to whatever `$TALKIES_URL` points at — that data leaves your host.** Point `$TALKIES_URL` only at a talkies instance you run or explicitly trust; prefer HTTPS when it's not localhost/LAN. Don't synthesize sensitive or confidential text through a server you don't control.
+
 ```bash
 curl -s $TALKIES_URL/v1/audio/speech \
   -H "Content-Type: application/json" \
@@ -465,7 +469,7 @@ At the deployment level: require `TALKIES_AUTH_TOKEN` by default, treat per-call
 | `GET /v1/files` | List every staged file. Returns `{"files": [{"path", "size", "modified"}]}`. **Enumerable by anyone with API access — no per-file ownership/isolation.** |
 | `PUT /v1/files/{path}` | Upload raw bytes (`--data-binary @local-file`). Capped at `TALKIES_MAX_UPLOAD_BYTES`. Atomic write (`.part` → rename). |
 | `GET /v1/files/{path}` | Streams file back. Content-Type guessed by extension. 404 if missing. |
-| `DELETE /v1/files/{path}` | Removes file and prunes empty parent dirs. 404 if missing. **Files do NOT self-expire — call this when you're done with a file.** |
+| `DELETE /v1/files/{path}` | Removes file and prunes empty parent dirs. 404 if missing. **Destructive & irreversible.** Deletes with no undo, on a shared bucket where every path is listable/readable by every caller (see the guardrail above) — never delete a path you didn't stage yourself, never enumerate-then-bulk-delete, and never call it unless the current task actually needs that exact path gone. **Files do NOT self-expire — call this when you're done with a file.** |
 
 ```bash
 # Stage once.
