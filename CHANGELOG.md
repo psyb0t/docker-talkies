@@ -4,6 +4,12 @@ All notable changes per release. Versions follow [semver](https://semver.org)
 pre-1.0 conventions: minor bumps may include breaking changes (called out
 explicitly with **Breaking.**), patch bumps are docs / build / fixes only.
 
+## v0.11.3 — 2026-07-26
+
+Skill docs de-duplicated. Documentation only, no behavior change.
+
+- Consolidated the repeated file-staging and no-auth warnings in `.agents/skills/talkies/SKILL.md` into one clear note each; the external-transmission and voice-cloning notes stay in the Security & safety section.
+
 ## v0.11.2 — 2026-07-26
 
 Skill security-documentation hardening. Docs only, no service or behavior change.
