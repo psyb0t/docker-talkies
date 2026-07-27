@@ -1,0 +1,22 @@
+{
+  "name": "talkies",
+  "description": "Self-hosted OpenAI-compatible speech API — ASR transcription (Whisper, Parakeet, Canary, Nemotron) and TTS synthesis (Kokoro, Qwen3-TTS voice cloning) over HTTP and MCP.",
+  "author": { "name": "psyb0t", "url": "https://github.com/psyb0t" },
+  "homepage": "https://github.com/psyb0t/docker-talkies",
+  "license": "WTFPL",
+  "keywords": ["speech", "asr", "tts", "transcription", "voice-cloning", "whisper", "kokoro", "mcp"],
+  "userConfig": {
+    "url": {
+      "type": "string",
+      "title": "talkies URL",
+      "description": "Base URL of your running talkies server, e.g. http://localhost:8000 (same value as TALKIES_URL).",
+      "required": true
+    },
+    "authToken": {
+      "type": "string",
+      "title": "talkies auth token",
+      "description": "Bearer token. Only needed if the server was started with TALKIES_AUTH_TOKEN set.",
+      "sensitive": true
+    }
+  }
+}

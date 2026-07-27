@@ -121,6 +121,7 @@ curl -s -X POST  http://localhost:8000/unload | jq    # evict everything
 - [Resource-management endpoints (Ollama-style)](#resource-management-endpoints-ollama-style)
 - [Server-side file staging (`/v1/files`)](#server-side-file-staging-v1files)
 - [MCP endpoint (`/v1/mcp`)](#mcp-endpoint-v1mcp)
+- [Agent integrations](#agent-integrations)
 - [Bearer-token auth](#bearer-token-auth)
 - [Configuration (env vars)](#configuration-env-vars)
 - [CPU vs CUDA images](#cpu-vs-cuda-images)
@@ -820,6 +821,43 @@ claude mcp add --transport http talkies http://localhost:8000/v1/mcp \
 ```
 
 The MCP server runs over the same FastAPI process, shares `BACKENDS` / `REGISTRY` with the HTTP routes, and goes through the same auth middleware. Sibling-eviction and idle-unload work identically — a model loaded by the MCP `transcribe` tool is the same instance the HTTP endpoint sees.
+
+## Agent integrations
+
+The [skill](.agents/skills/talkies) works in any agent that reads `.agents/skills/`, and installs natively in the clients below.
+
+### Claude Code
+
+```bash
+claude plugin marketplace add psyb0t/agents
+claude plugin install talkies@psyb0t
+```
+
+Claude Code prompts for the talkies URL and, if auth is enabled, the token — the token is stored in your OS keychain.
+
+### Codex
+
+```bash
+codex plugin marketplace add psyb0t/agents
+```
+
+Codex also picks the skill up automatically in any repo containing `.agents/skills/`, and invokes it as `$talkies`.
+
+### OpenClaw
+
+The skill is published to ClawHub on every release:
+
+```bash
+openclaw skills install @psyb0t/talkies
+```
+
+For MCP clients that speak local stdio, the [`@psyb0t/talkies`](.agents/plugins/talkies) plugin bridges to the service's `/v1/mcp` endpoint:
+
+```bash
+openclaw plugins install clawhub:@psyb0t/talkies
+```
+
+Then set `TALKIES_URL` (and `TALKIES_AUTH_TOKEN` if the server requires one).
 
 ## Bearer-token auth
 

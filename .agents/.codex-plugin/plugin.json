@@ -1,0 +1,11 @@
+{
+  "name": "talkies",
+  "version": "0.11.9",
+  "description": "Self-hosted OpenAI-compatible speech API — ASR transcription (Whisper, Parakeet, Canary, Nemotron) and TTS synthesis (Kokoro, Qwen3-TTS voice cloning) over HTTP and MCP.",
+  "author": { "name": "psyb0t", "url": "https://github.com/psyb0t" },
+  "homepage": "https://github.com/psyb0t/docker-talkies",
+  "repository": "https://github.com/psyb0t/docker-talkies",
+  "license": "WTFPL",
+  "keywords": ["speech", "asr", "tts", "transcription", "voice-cloning", "whisper", "kokoro", "mcp"],
+  "skills": "./skills/"
+}

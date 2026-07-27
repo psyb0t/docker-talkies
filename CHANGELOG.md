@@ -4,6 +4,13 @@ All notable changes per release. Versions follow [semver](https://semver.org)
 pre-1.0 conventions: minor bumps may include breaking changes (called out
 explicitly with **Breaking.**), patch bumps are docs / build / fixes only.
 
+## v0.11.9 — 2026-07-27
+
+Agent-integration manifests. Documentation only, no behavior change.
+
+- Added `.agents/.claude-plugin/plugin.json` and `.agents/.codex-plugin/plugin.json` so the existing `.agents/skills/talkies` skill installs natively as a plugin in Claude Code and Codex, pointed at the shared `psyb0t/agents` marketplace.
+- Added a `## Agent integrations` section to the README with copy-pasteable install commands for Claude Code, Codex, the OpenClaw skill, and the OpenClaw MCP-bridge plugin.
+
 ## v0.11.8 — 2026-07-27
 
 - Added a GitHub Actions CI status badge to the README.
