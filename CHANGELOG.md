@@ -4,6 +4,13 @@ All notable changes per release. Versions follow [semver](https://semver.org)
 pre-1.0 conventions: minor bumps may include breaking changes (called out
 explicitly with **Breaking.**), patch bumps are docs / build / fixes only.
 
+## v0.11.10 — 2026-07-27
+
+README fix. Documentation only, no behavior change.
+
+- The `## Agent integrations` section's Codex subsection listed `codex plugin marketplace add psyb0t/agents` but never the actual install command — added `codex plugin add talkies@psyb0t` right after it.
+- Clarified that the invocation form depends on how the skill got there: installed via the marketplace it's invoked as `$talkies:talkies`, while Codex's automatic pickup from a repo's own `.agents/skills/` (no install required) invokes it as plain `$talkies`.
+
 ## v0.11.9 — 2026-07-27
 
 Agent-integration manifests. Documentation only, no behavior change.

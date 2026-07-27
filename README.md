@@ -839,9 +839,10 @@ Claude Code prompts for the talkies URL and, if auth is enabled, the token — t
 
 ```bash
 codex plugin marketplace add psyb0t/agents
+codex plugin add talkies@psyb0t
 ```
 
-Codex also picks the skill up automatically in any repo containing `.agents/skills/`, and invokes it as `$talkies`.
+Installed via the marketplace, the skill invokes as `$talkies:talkies`. Codex also picks the skill up automatically with no install in any repo containing `.agents/skills/`, where it invokes as plain `$talkies`.
 
 ### OpenClaw
 
