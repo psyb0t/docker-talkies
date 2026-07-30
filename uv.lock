@@ -687,7 +687,7 @@ wheels = [
 
 [[package]]
 name = "talkies"
-version = "0.1.0"
+version = "0.12.1"
 source = { editable = "." }
 dependencies = [
     { name = "fastapi" },

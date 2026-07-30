@@ -132,7 +132,7 @@ sessions are available through parakeet.cpp, Sherpa-ONNX, and Vosk, while
 faster-whisper uses a bounded rolling window. When authentication is enabled,
 send the bearer token in the WebSocket upgrade header, never in the URL.
 
-See the repository's [`streaming.md`](https://github.com/psyb0t/docker-talkies/blob/main/streaming.md)
+See the repository's [`docs/streaming.md`](https://github.com/psyb0t/docker-talkies/blob/main/docs/streaming.md)
 for the exact start/event shapes, a Python client, limits, and custom Sherpa or
 Vosk model-registry entries.
 

@@ -4,6 +4,18 @@ All notable changes per release. Versions follow [semver](https://semver.org)
 pre-1.0 conventions: minor bumps may include breaking changes (called out
 explicitly with **Breaking.**), patch bumps are docs / build / fixes only.
 
+## v0.12.1 — 2026-07-30
+
+Documentation hierarchy refresh. No service behavior change.
+
+- Replaced the long root README with a short start page and detailed guides
+  under `docs/` for startup, architecture, models, API, streaming,
+  configuration, operations, and development.
+- Moved live streaming documentation to `docs/streaming.md` and updated linked
+  agent and third-party references.
+- Corrected the configuration reference to state that `TALKIES_LOAD_TIMEOUT`
+  is parsed but not currently enforced by the server.
+
 ## v0.12.0 — 2026-07-29
 
 Live streaming ASR, new optional streaming runtimes, and CUDA dependency compatibility.

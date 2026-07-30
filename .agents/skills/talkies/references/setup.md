@@ -115,7 +115,7 @@ Audio longer than `TALKIES_VAD_CHUNK_THRESHOLD` seconds gets sliced through Sile
 
 `WS /v1/audio/transcriptions/stream` accepts headerless 16 kHz mono PCM16LE.
 It is separate from the OpenAI-compatible upload route. See the repository's
-[`streaming.md`](https://github.com/psyb0t/docker-talkies/blob/main/streaming.md)
+[`docs/streaming.md`](https://github.com/psyb0t/docker-talkies/blob/main/docs/streaming.md)
 for the protocol and client examples.
 
 | Var | Default | What it does |

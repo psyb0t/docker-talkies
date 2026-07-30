@@ -18,6 +18,6 @@ The rest of the stack pulled into the image is permissive:
 - [NeMo](https://github.com/NVIDIA/NeMo) (`nemo_toolkit[asr]`, ASR backends) — Apache-2.0.
 
 Model weight licenses (CC-BY-4.0, Apache-2.0, etc.) are documented per-model in the
-[Supported models](README.md#supported-models) table in the README — those are
+[model registry documentation](docs/models.md) — those are
 downloaded at runtime into `/data/models/`, not distributed inside the image
 itself.
