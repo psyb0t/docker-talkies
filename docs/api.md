@@ -53,6 +53,13 @@ marks segments and words with `channel: "L"` or `channel: "R"`.
 For audio longer than the configured threshold, Talkies normalizes audio and
 uses VAD segmentation before calling the ASR backend. See [Configuration](configuration.md#file-transcription-vad).
 
+The four bundled English Sherpa-ONNX variants and bundled Vosk small English
+are valid `model` values here as well as on the live WebSocket route. Their
+file requests are decoded through a short-lived native stream after
+normalization; see [Streaming](streaming.md#sherpa-onnx-and-vosk) for the
+engine-specific behavior and [Models](models.md#sherpa-onnx-and-vosk-choices)
+for selectable slugs.
+
 ## Speech
 
 `POST /v1/audio/speech` accepts a JSON body. It returns encoded audio bytes or,

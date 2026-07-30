@@ -1,10 +1,14 @@
 PORT ?= 8000
 
 DEV_IMAGE := psyb0t/talkies-dev:latest
-CPU_IMAGE := psyb0t/talkies:local
-CUDA_IMAGE := psyb0t/talkies:local-cuda
-
 PYPROJECT := pyproject.toml
+VERSION ?= $(shell awk -F'"' '/^version *= *"/ {print $$2; exit}' $(PYPROJECT))
+CPU_IMAGE := psyb0t/talkies:local
+CPU_VERSIONED_IMAGE := psyb0t/talkies:v$(VERSION)
+CPU_LATEST_IMAGE := psyb0t/talkies:latest
+CUDA_IMAGE := psyb0t/talkies:local-cuda
+CUDA_VERSIONED_IMAGE := psyb0t/talkies:v$(VERSION)-cuda
+CUDA_LATEST_IMAGE := psyb0t/talkies:latest-cuda
 BUMP_HOST := bash scripts/bump_exclude_newer.sh $(PYPROJECT)
 
 UID := $(shell id -u)
@@ -30,9 +34,11 @@ DEV_RUN_TTY := docker run --rm -it \
 	$(DEV_IMAGE)
 
 .PHONY: help dev-image shell \
+        version \
         build build-cuda build-all \
         run run-cuda \
         test test-unit test-integration test-streaming test-streaming-custom \
+        test-streaming-custom-cuda \
         lint format check clean \
         pkg-lock pkg-upgrade pkg-add pkg-remove pkg-update \
         compile-heavy
@@ -81,15 +87,24 @@ pkg-update: dev-image ## Upgrade ONE package (usage: make pkg-update PKG=name)
 compile-heavy: dev-image ## Recompile hash-locked requirements-heavy-{cpu,cuda}.txt from scripts/heavy-deps-*.in
 	$(DEV_RUN) bash scripts/compile-heavy-deps.sh
 
+version: ## Print the release tag derived from pyproject.toml
+	@echo v$(VERSION)
+
 # -----------------------------------------------------------------------------
 # Production image builds.
 # -----------------------------------------------------------------------------
 
-build: ## Build the CPU production image
-	docker build -f Dockerfile -t $(CPU_IMAGE) .
+build: ## Build the CPU image and tag local, versioned, and latest forms
+	docker build -f Dockerfile \
+		-t $(CPU_IMAGE) \
+		-t $(CPU_VERSIONED_IMAGE) \
+		-t $(CPU_LATEST_IMAGE) .
 
-build-cuda: ## Build the CUDA production image
-	docker build -f Dockerfile.cuda -t $(CUDA_IMAGE) .
+build-cuda: ## Build the CUDA image and tag local, versioned, and latest forms
+	docker build -f Dockerfile.cuda \
+		-t $(CUDA_IMAGE) \
+		-t $(CUDA_VERSIONED_IMAGE) \
+		-t $(CUDA_LATEST_IMAGE) .
 
 build-all: build build-cuda ## Build both production images
 
@@ -134,8 +149,12 @@ test-integration: ## Run CUDA integration tests (host-side, needs --gpus all)
 test-streaming: build ## Run the CPU-native real WebSocket streaming ASR test
 	TALKIES_SKIP_BUILD=1 bash tests/integration/e2e_streaming_asr.sh
 
-test-streaming-custom: build ## Run real Sherpa-ONNX and Vosk WebSocket streaming tests
+test-streaming-custom: build ## Run real CPU Sherpa-ONNX/Vosk WebSocket and HTTP ASR tests
 	TALKIES_SKIP_BUILD=1 bash tests/integration/e2e_streaming_custom_backends.sh
+
+test-streaming-custom-cuda: build-cuda ## Run real CUDA Sherpa WebSocket and HTTP ASR tests
+	HARNESS_IMAGE=$(CUDA_IMAGE) CUSTOM_HARNESS_DEVICE=cuda CUSTOM_HARNESS_USE_GPU=1 \
+		TALKIES_SKIP_BUILD=1 bash tests/integration/e2e_streaming_custom_backends.sh sherpa-stream-test
 
 lint: dev-image ## Lint python sources
 	$(DEV_RUN) flake8 src

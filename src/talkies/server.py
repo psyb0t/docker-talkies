@@ -43,17 +43,10 @@ from pydantic import BaseModel, Field
 from starlette.responses import StreamingResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
-from . import config
+from . import __version__, config
 from . import downloads as downloads_mod
 from . import files as files_mod
 from . import tts as tts_mod
-from .audio import (
-    AudioConversionError,
-    NotStereoError,
-    to_wav_16k_mono,
-    to_wav_16k_split_lr,
-)
-from .auth import BearerAuthMiddleware
 from .asr_streaming import (
     EVENT_CANCEL,
     EVENT_END,
@@ -62,14 +55,21 @@ from .asr_streaming import (
     EVENT_PARTIAL,
     MAX_CONTROL_MESSAGE_BYTES,
     StreamConfig,
-    StreamSessionState,
     StreamingProtocolError,
+    StreamSessionState,
     TranscriptEvent,
     decode_json_message,
     pack_event,
     parse_control_message,
     parse_start_message,
 )
+from .audio import (
+    AudioConversionError,
+    NotStereoError,
+    to_wav_16k_mono,
+    to_wav_16k_split_lr,
+)
+from .auth import BearerAuthMiddleware
 from .logging import configure as configure_logging
 from .mcp_server import build_mcp_server
 from .models import (
@@ -313,6 +313,7 @@ async def _lifespan(_app: FastAPI):
 
 app = FastAPI(
     title="talkies",
+    version=__version__,
     description=(
         "OpenAI-compatible speech wrapper — /v1/audio/transcriptions over "
         "Whisper / Parakeet / Canary ASR + /v1/audio/speech over Kokoro TTS. "

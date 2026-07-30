@@ -46,6 +46,23 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv venv /opt/venv && \
     uv sync --frozen --no-dev
 
+# The PyPI Sherpa wheel is CPU-only. Replace it in the CUDA variant with the
+# upstream CUDA 12 / cuDNN 9 wheel, pinned by its content hash. This wheel
+# contains Sherpa's native CUDA execution provider; onnxruntime-gpu alone
+# cannot add that provider to a CPU-built Sherpa library.
+ARG SHERPA_ONNX_CUDA_WHEEL_URL="https://huggingface.co/csukuangfj2/sherpa-onnx-wheels/resolve/main/cuda/1.13.4/sherpa_onnx-1.13.4+cuda12.cudnn9-cp312-cp312-linux_x86_64.whl"
+ARG SHERPA_ONNX_CUDA_WHEEL_FILE="sherpa_onnx-1.13.4+cuda12.cudnn9-cp312-cp312-linux_x86_64.whl"
+ARG SHERPA_ONNX_CUDA_WHEEL_SHA256="76ffc8a204a00df51d2d8e87f38c204640370b45c24c33f0e1b87d846aeb6c52"
+RUN --mount=type=cache,target=/root/.cache/uv \
+    curl --fail --location --retry 3 --retry-delay 2 \
+        "$SHERPA_ONNX_CUDA_WHEEL_URL" \
+        --output "/tmp/$SHERPA_ONNX_CUDA_WHEEL_FILE" \
+    && echo "$SHERPA_ONNX_CUDA_WHEEL_SHA256  /tmp/$SHERPA_ONNX_CUDA_WHEEL_FILE" \
+        | sha256sum --check \
+    && uv pip install --python /opt/venv/bin/python --no-deps \
+        "/tmp/$SHERPA_ONNX_CUDA_WHEEL_FILE" \
+    && rm "/tmp/$SHERPA_ONNX_CUDA_WHEEL_FILE"
+
 # 2) Heavy ML deps — CUDA torch + nemo_toolkit[asr] + qwen3-tts. Hash-locked.
 COPY requirements-heavy-cuda.txt ./
 RUN --mount=type=cache,target=/root/.cache/uv \

@@ -4,6 +4,24 @@ All notable changes per release. Versions follow [semver](https://semver.org)
 pre-1.0 conventions: minor bumps may include breaking changes (called out
 explicitly with **Breaking.**), patch bumps are docs / build / fixes only.
 
+## v0.13.0 — 2026-07-30
+
+Bundled selectable Sherpa-ONNX and Vosk ASR models with OpenAI-compatible file transcription.
+
+- Added four English Sherpa-ONNX Zipformer variants and Vosk small English to
+  both bundled registries. Each supports native live ASR and
+  `POST /v1/audio/transcriptions`; the file route feeds normalized audio through
+  a short-lived native stream.
+- Added registry-owned `download_patterns`, so selecting a Sherpa variant
+  downloads only its matching tokens, encoder, decoder, and joiner artifacts.
+- Updated the CUDA image to install a hash-verified upstream Sherpa CUDA wheel,
+  enabling its native CUDA execution provider rather than a CPU fallback.
+- Added real-audio CPU and CUDA end-to-end coverage for native WebSocket and
+  OpenAI-compatible HTTP transcription, plus unit and route-level coverage for
+  the new file adapter and bundled registry entries.
+- Synced model, agent, third-party, OpenAPI-version, and local versioned-image
+  documentation and metadata.
+
 ## v0.12.1 — 2026-07-30
 
 Documentation hierarchy refresh. No service behavior change.

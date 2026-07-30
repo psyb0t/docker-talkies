@@ -4,6 +4,7 @@ import importlib
 import json
 import sys
 import types
+import wave
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
@@ -17,6 +18,7 @@ from talkies.asr_streaming import (
     StreamConfig,
     TranscriptEvent,
 )
+from talkies.models.base import TranscribeResult
 
 
 class _FakeStreamSession:
@@ -58,6 +60,7 @@ class _FakeBackend:
     def __init__(self) -> None:
         self.sessions: list[_FakeStreamSession] = []
         self.configs: list[StreamConfig] = []
+        self.transcribe_calls: list[dict[str, object]] = []
         self.unload_count = 0
 
     async def start_stream(self, config: StreamConfig) -> _FakeStreamSession:
@@ -65,6 +68,26 @@ class _FakeBackend:
         self.configs.append(config)
         self.sessions.append(session)
         return session
+
+    async def transcribe(
+        self,
+        audio_path: str,
+        *,
+        source_lang: str | None,
+        target_lang: str | None,
+        task: str,
+        with_timestamps: bool = False,
+    ) -> TranscribeResult:
+        self.transcribe_calls.append(
+            {
+                "audio_path": audio_path,
+                "source_lang": source_lang,
+                "target_lang": target_lang,
+                "task": task,
+                "with_timestamps": with_timestamps,
+            }
+        )
+        return TranscribeResult(text="file transcript", language=source_lang)
 
     async def unload(self) -> None:
         self.unload_count += 1
@@ -219,6 +242,44 @@ def test_stream_happy_path_emits_ready_partial_final_and_stats(
     }
     assert backend.configs[0].word_timestamps is True
     assert backend.sessions[0].closed is True
+
+
+def test_file_transcription_accepts_a_streaming_asr_backend(
+    streaming_server,
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    server, backend = streaming_server
+    normalized_wav = tmp_path / "normalized.wav"
+    with wave.open(str(normalized_wav), "wb") as wav_file:
+        wav_file.setnchannels(1)
+        wav_file.setsampwidth(2)
+        wav_file.setframerate(16_000)
+        wav_file.writeframes(b"\x00\x00" * 160)
+    monkeypatch.setattr(
+        server,
+        "to_wav_16k_mono",
+        lambda raw, original_name: str(normalized_wav),
+    )
+
+    with TestClient(server.app) as client:
+        response = client.post(
+            "/v1/audio/transcriptions",
+            data={"model": "stream-model", "response_format": "json"},
+            files={"file": ("audio.wav", b"not-read-by-fake-converter", "audio/wav")},
+        )
+
+    assert response.status_code == 200
+    assert response.json() == {"text": "file transcript"}
+    assert backend.transcribe_calls == [
+        {
+            "audio_path": str(normalized_wav),
+            "source_lang": None,
+            "target_lang": None,
+            "task": "asr",
+            "with_timestamps": False,
+        }
+    ]
 
 
 def test_stream_suppresses_empty_native_partial(streaming_server) -> None:

@@ -12,7 +12,8 @@ ML runtime dependencies, so unit tests stub the ML backends.
 | `make build` / `make build-cuda` | Build CPU or CUDA production image |
 | `make build-all` | Build both images |
 | `make test-streaming` | Real CPU native WebSocket ASR E2E |
-| `make test-streaming-custom` | Real Sherpa-ONNX and Vosk WebSocket E2E |
+| `make test-streaming-custom` | Real CPU Sherpa-ONNX/Vosk WebSocket and HTTP E2E |
+| `make test-streaming-custom-cuda` | Real CUDA Sherpa WebSocket and HTTP E2E |
 | `make test-integration` | CUDA integration suite on a GPU-capable host |
 
 The two streaming tests run host-side because they start production images and

@@ -49,11 +49,13 @@ and MCP are Talkies extensions.
 ## Models at a glance
 
 - CPU: two Whisper models, Canary-180M-Flash, Nemotron ASR via parakeet.cpp,
-  and two Kokoro TTS backends.
+  four English Sherpa-ONNX Zipformer choices, Vosk small English, and two
+  Kokoro TTS backends.
 - CUDA: the CPU set plus Parakeet-TDT, Canary 1B/Qwen ASR, and five Qwen3 TTS
   variants.
-- Live ASR: bundled Nemotron is native; bundled Whisper is a bounded rolling
-  decoder. Sherpa-ONNX and Vosk are native through a custom registry.
+- Live ASR: bundled Nemotron, Sherpa-ONNX, and Vosk are native; bundled Whisper
+  is a bounded rolling decoder. Sherpa and Vosk also work through the
+  OpenAI-compatible file-transcription endpoint.
 - Streaming TTS: Qwen3 returns incremental raw PCM for
   `response_format="pcm"`; other TTS formats and Kokoro are buffered.
 
@@ -85,7 +87,8 @@ See [Operations and security](docs/operations.md) for the complete posture.
 ```bash
 make check                 # lint + unit tests in the dev image
 make test-streaming        # real CPU native WebSocket ASR test
-make test-streaming-custom # real Sherpa-ONNX and Vosk WebSocket tests
+make test-streaming-custom # real CPU Sherpa/Vosk WebSocket + HTTP tests
+make test-streaming-custom-cuda # real CUDA Sherpa WebSocket + HTTP test
 make build-all             # CPU and CUDA production images
 ```
 

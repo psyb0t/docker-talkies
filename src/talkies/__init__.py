@@ -15,6 +15,13 @@ Stubbing IPython here, before any NeMo import, skips the entire chain.
 
 import sys as _sys
 import types as _types
+from importlib.metadata import PackageNotFoundError as _PackageNotFoundError
+from importlib.metadata import version as _package_version
+
+try:
+    __version__ = _package_version("talkies")
+except _PackageNotFoundError:
+    __version__ = "0.0.0+source"
 
 
 def _install_ipython_stub() -> None:

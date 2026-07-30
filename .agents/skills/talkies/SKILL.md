@@ -1,6 +1,6 @@
 ---
 name: talkies
-description: Self-hosted OpenAI-compatible speech service. /v1/audio/transcriptions fronts seven open ASR models (Whisper, Parakeet, Nemotron-3.5-ASR, Canary); /v1/audio/transcriptions/stream accepts live PCM over WebSocket. /v1/audio/speech fronts 2 TTS engines / 3 backends — Kokoro-82M (41 baked voices, PyTorch + ONNX runtimes) and the CUDA-only Qwen3-TTS family (voice cloning, preset speakers, voice design). Stereo diarization, URL fetching, MCP endpoint, bearer auth.
+description: Self-hosted OpenAI-compatible speech service. /v1/audio/transcriptions fronts 12 open ASR models (Whisper, Parakeet, Nemotron-3.5-ASR, Canary, Sherpa-ONNX, Vosk); /v1/audio/transcriptions/stream accepts live PCM over WebSocket. /v1/audio/speech fronts 2 TTS engines / 3 backends — Kokoro-82M (41 baked voices, PyTorch + ONNX runtimes) and the CUDA-only Qwen3-TTS family (voice cloning, preset speakers, voice design). Stereo diarization, URL fetching, MCP endpoint, bearer auth.
 homepage: https://github.com/psyb0t/docker-talkies
 user-invocable: true
 permissions:
@@ -15,7 +15,7 @@ metadata:
 
 Self-hosted speech service — ASR and TTS, one container. OpenAI-compatible wire shape on both endpoints; point an OpenAI client at it, change the model slug, done.
 
-ASR (`POST /v1/audio/transcriptions`): seven backends — `whisper-large-v3`, `whisper-large-v3-turbo`, `parakeet-tdt-0.6b-v3`, `nemotron-3.5-asr-0.6b`, `canary-180m-flash`, `canary-1b-flash`, `canary-qwen-2.5b`.
+ASR (`POST /v1/audio/transcriptions`): twelve bundled slugs — `whisper-large-v3`, `whisper-large-v3-turbo`, `parakeet-tdt-0.6b-v3`, `nemotron-3.5-asr-0.6b`, `canary-180m-flash`, `canary-1b-flash`, `canary-qwen-2.5b`, four selectable English Sherpa Zipformer variants, and `vosk-small-en-us-0.15`.
 
 TTS (`POST /v1/audio/speech`): 2 engines / 3 backends across 7 slugs — `kokoro-82m` (PyTorch) and `kokoro-82m-nvidia` (ONNX/ORT) with 41 baked voices across en/es/fr/hi/it/pt, plus the CUDA-only Qwen3-TTS family: `qwen3-tts-0.6b` / `qwen3-tts-1.7b` (voice cloning from reference clips), `qwen3-tts-0.6b-custom` / `qwen3-tts-1.7b-custom` (9 preset speakers), `qwen3-tts-1.7b-design` (voice from an NL description). Discover voices via `GET /v1/audio/voices`.
 
@@ -149,11 +149,17 @@ Vosk model-registry entries.
 | `canary-180m-flash` | NeMo Canary | yes | yes | English only (small) | smallest, runs anywhere |
 | `canary-1b-flash` | NeMo Canary | no | yes | en/de/fr/es + translation | multilingual, translation |
 | `canary-qwen-2.5b` | NeMo SALM | no | yes | English only | best English accuracy (no timestamps) |
+| `sherpa-zipformer-en-left-64` | Sherpa-ONNX Zipformer | yes | yes | English only | native live ASR, lower left context |
+| `sherpa-zipformer-en-left-128` | Sherpa-ONNX Zipformer | yes | yes | English only | native live ASR, higher left context |
+| `sherpa-zipformer-en-int8-left-64` | Sherpa-ONNX Zipformer INT8 | yes | yes | English only | smaller native live ASR variant |
+| `sherpa-zipformer-en-int8-left-128` | Sherpa-ONNX Zipformer INT8 | yes | yes | English only | smaller native live ASR variant |
+| `vosk-small-en-us-0.15` | Vosk | yes | yes | English only | native live ASR; CPU decoder |
 
 Pick by use case:
 - **General-purpose:** `whisper-large-v3-turbo`.
 - **English-only, max accuracy on GPU:** `canary-qwen-2.5b` (but no per-segment timestamps).
 - **Translation EN↔DE/FR/ES:** `canary-1b-flash` (requires custom model registry — see [Translation](#translation)).
+- **Low-overhead live English ASR:** one of the Sherpa Zipformer variants or `vosk-small-en-us-0.15`; Sherpa uses CUDA in the CUDA image, while Vosk remains CPU-decoded.
 
 ### TTS
 

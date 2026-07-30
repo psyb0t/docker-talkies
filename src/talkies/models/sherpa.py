@@ -14,6 +14,8 @@ from collections.abc import Mapping
 from typing import Any, Callable
 
 from ..asr_streaming import StreamConfig, StreamingASRSession, TranscriptEvent
+from .base import TranscribeResult
+from .stream_batch import transcribe_wav_via_stream
 
 _SUPPORTED_FACTORIES = frozenset(
     {
@@ -25,6 +27,7 @@ _SUPPORTED_FACTORIES = frozenset(
 )
 _MAX_DECODE_STEPS_PER_CALL = 10_000
 _PCM16_SCALE = 32_768.0
+_MAX_BATCH_FRAME_BYTES = 65_536
 
 logger = logging.getLogger(__name__)
 
@@ -122,6 +125,25 @@ class SherpaBackend:
             stream=stream,
             config=config,
             release=self._release_stream,
+        )
+
+    async def transcribe(
+        self,
+        audio_path: str,
+        *,
+        source_lang: str | None,
+        target_lang: str | None,
+        task: str,
+        with_timestamps: bool = False,
+    ) -> TranscribeResult:
+        """Transcribe a complete normalized audio file with the online decoder."""
+        del target_lang, task
+        return await transcribe_wav_via_stream(
+            self,
+            audio_path,
+            source_lang=source_lang,
+            with_timestamps=with_timestamps,
+            max_frame_bytes=_MAX_BATCH_FRAME_BYTES,
         )
 
     def _release_stream(self) -> None:

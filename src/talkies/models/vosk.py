@@ -23,6 +23,8 @@ from ..asr_streaming import (
     TranscriptEvent,
     validate_pcm_frame,
 )
+from .base import TranscribeResult
+from .stream_batch import transcribe_wav_via_stream
 
 # isort: on
 
@@ -104,6 +106,25 @@ class VoskBackend:
             config=config,
             max_frame_bytes=self._max_frame_bytes,
             release=self._release_stream,
+        )
+
+    async def transcribe(
+        self,
+        audio_path: str,
+        *,
+        source_lang: str | None,
+        target_lang: str | None,
+        task: str,
+        with_timestamps: bool = False,
+    ) -> TranscribeResult:
+        """Transcribe a complete normalized audio file with a Vosk session."""
+        del target_lang, task
+        return await transcribe_wav_via_stream(
+            self,
+            audio_path,
+            source_lang=source_lang,
+            with_timestamps=with_timestamps,
+            max_frame_bytes=self._max_frame_bytes,
         )
 
     def _create_recognizer(self, model: Any, sample_rate: int) -> Any:

@@ -27,8 +27,8 @@ mkdir -p "${TALKIES_DATA_DIR}/custom-voices"
 # HF_HUB_OFFLINE=1, so post-prefetch the server runs fully offline).
 echo "[entrypoint] resolving enabled models (TALKIES_ENABLED_MODELS=${TALKIES_ENABLED_MODELS:-<all>})"
 (
-    unset HF_HUB_OFFLINE
-    python3 -c "
+	unset HF_HUB_OFFLINE
+	python3 -c "
 import json, os, sys
 from pathlib import Path
 from huggingface_hub import snapshot_download
@@ -56,9 +56,26 @@ for slug in enabled:
     repo = reg[slug]['repo']
     revision = reg[slug].get('revision')
     target = models_root / slug
-    # parakeet.cpp slugs share one multi-variant GGUF repo; honor the registry's
-    # gguf_file field to fetch only that quant + the small text files we need
-    # for traceability. Without it we'd pull every quant in the repo.
+    # Variant registries may name an exact artifact allowlist. This keeps model
+    # families that share a Hugging Face repository from downloading every
+    # precision/context variant for each user-visible slug.
+    download_patterns = reg[slug].get('download_patterns')
+    if download_patterns is not None:
+        if (
+            not isinstance(download_patterns, list)
+            or not download_patterns
+            or any(
+                not isinstance(pattern, str) or not pattern
+                for pattern in download_patterns
+            )
+        ):
+            print(
+                f'[entrypoint] invalid download_patterns for {slug}',
+                file=sys.stderr,
+            )
+            sys.exit(1)
+    # parakeet.cpp slugs predate generic download_patterns. Keep their current
+    # narrow download contract while new registries use the generic field.
     gguf_file = reg[slug].get('gguf_file')
     if target.is_dir() and any(target.iterdir()):
         print(f'[entrypoint] cached: {slug} -> {target}')
@@ -66,7 +83,14 @@ for slug in enabled:
         ref = f'@{revision}' if revision else ''
         print(f'[entrypoint] downloading: {slug} ({repo}{ref}) -> {target}')
         target.mkdir(parents=True, exist_ok=True)
-        if gguf_file:
+        if download_patterns:
+            snapshot_download(
+                repo,
+                local_dir=str(target),
+                revision=revision,
+                allow_patterns=download_patterns,
+            )
+        elif gguf_file:
             snapshot_download(
                 repo,
                 local_dir=str(target),

@@ -15,6 +15,11 @@ that limits both boot-time downloads and the model surface exposed by the API.
 | `parakeet-tdt-0.6b-v3` | `nvidia/parakeet-tdt-0.6b-v3` | `parakeet` | no | yes | no |
 | `canary-1b-flash` | `nvidia/canary-1b-flash` | `canary_multitask` | no | yes | no |
 | `canary-qwen-2.5b` | `nvidia/canary-qwen-2.5b` | `canary_salm` | no | yes | no |
+| `sherpa-zipformer-en-left-64` | `csukuangfj/sherpa-onnx-streaming-zipformer-en-2023-06-26` | `sherpa` | yes | yes | native |
+| `sherpa-zipformer-en-left-128` | `csukuangfj/sherpa-onnx-streaming-zipformer-en-2023-06-26` | `sherpa` | yes | yes | native |
+| `sherpa-zipformer-en-int8-left-64` | `csukuangfj/sherpa-onnx-streaming-zipformer-en-2023-06-26` | `sherpa` | yes | yes | native |
+| `sherpa-zipformer-en-int8-left-128` | `csukuangfj/sherpa-onnx-streaming-zipformer-en-2023-06-26` | `sherpa` | yes | yes | native |
+| `vosk-small-en-us-0.15` | `aglaia-models/vosk-model-small-en-us-0.15` | `vosk` | yes | yes | native (CPU decoder) |
 
 All ASR slugs use `POST /v1/audio/transcriptions`. A registry may provide the
 default source language, target language, and task; request `language` wins
@@ -26,6 +31,22 @@ The registry declares English for Canary-180M and Parakeet-TDT, English/German/
 French/Spanish for Canary-1B, English for Canary-Qwen, and `auto` plus 23 named
 language codes for Nemotron. Whisper entries do not pin a registry language.
 `canary-qwen-2.5b` also declares `Qwen/Qwen3-1.7B` as a dependent snapshot.
+
+### Sherpa-ONNX and Vosk choices
+
+The four Sherpa slugs are English Zipformer transducer variants. `left-64` and
+`left-128` select the model's left-context configuration; the `int8` choices
+use quantized weights. Select exactly the trade-off you want with
+`TALKIES_ENABLED_MODELS`; the entrypoint downloads only that slug's tokens and
+matching encoder, decoder, and joiner files, not all four variants. The FP32
+model files are substantially larger than their INT8 counterparts.
+
+Sherpa uses CPU in the CPU image and its native CUDA provider in the CUDA image
+when Talkies runs with `--gpus all`. `vosk-small-en-us-0.15` is English-only
+and always decodes on CPU, including in the CUDA image. All five models support
+the live WebSocket API and the OpenAI-compatible file-transcription API. See
+[Streaming](streaming.md#sherpa-onnx-and-vosk) for protocol and file-route
+details.
 
 ## Bundled TTS models
 
@@ -68,7 +89,9 @@ of `whisper`, `parakeet`, `parakeet_cpp`, `canary_multitask`, `canary_salm`,
 `kokoro`, `kokoro_nvidia`, `qwen3_tts`, `sherpa`, or `vosk`. The entrypoint
 downloads a selected repository into `/data/models/<slug>`. `revision`, when
 set, is supplied to Hugging Face snapshot download; pin it to an immutable
-commit for reproducible contents. See [Streaming](streaming.md#custom-sherpa-onnx-and-vosk-registries)
+commit for reproducible contents. An optional `download_patterns` array limits
+the snapshot to static registry-owned paths, which is useful when one repository
+contains several model variants. See [Streaming](streaming.md#sherpa-onnx-and-vosk)
 for the required native-streaming fields.
 
 The authoritative bundled entries are

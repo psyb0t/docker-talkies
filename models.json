@@ -21,6 +21,48 @@
       "default_task": "asr",
       "languages": ["auto", "en", "es", "de", "fr", "it", "ar", "ja", "ko", "pt", "ru", "hi", "zh", "vi", "he", "nl", "cs", "da", "pl", "no", "sv", "th", "tr", "bg"]
     },
+    "sherpa-zipformer-en-left-64": {
+      "repo": "csukuangfj/sherpa-onnx-streaming-zipformer-en-2023-06-26",
+      "revision": "672fbf1b30579d6585301139bb363f42a0ad4a24",
+      "executor": "sherpa",
+      "recognizer_factory": "from_transducer",
+      "download_patterns": ["tokens.txt", "encoder-epoch-99-avg-1-chunk-16-left-64.onnx", "decoder-epoch-99-avg-1-chunk-16-left-64.onnx", "joiner-epoch-99-avg-1-chunk-16-left-64.onnx"],
+      "sherpa_config": {"tokens": "tokens.txt", "encoder": "encoder-epoch-99-avg-1-chunk-16-left-64.onnx", "decoder": "decoder-epoch-99-avg-1-chunk-16-left-64.onnx", "joiner": "joiner-epoch-99-avg-1-chunk-16-left-64.onnx"},
+      "languages": ["en"]
+    },
+    "sherpa-zipformer-en-left-128": {
+      "repo": "csukuangfj/sherpa-onnx-streaming-zipformer-en-2023-06-26",
+      "revision": "672fbf1b30579d6585301139bb363f42a0ad4a24",
+      "executor": "sherpa",
+      "recognizer_factory": "from_transducer",
+      "download_patterns": ["tokens.txt", "encoder-epoch-99-avg-1-chunk-16-left-128.onnx", "decoder-epoch-99-avg-1-chunk-16-left-128.onnx", "joiner-epoch-99-avg-1-chunk-16-left-128.onnx"],
+      "sherpa_config": {"tokens": "tokens.txt", "encoder": "encoder-epoch-99-avg-1-chunk-16-left-128.onnx", "decoder": "decoder-epoch-99-avg-1-chunk-16-left-128.onnx", "joiner": "joiner-epoch-99-avg-1-chunk-16-left-128.onnx"},
+      "languages": ["en"]
+    },
+    "sherpa-zipformer-en-int8-left-64": {
+      "repo": "csukuangfj/sherpa-onnx-streaming-zipformer-en-2023-06-26",
+      "revision": "672fbf1b30579d6585301139bb363f42a0ad4a24",
+      "executor": "sherpa",
+      "recognizer_factory": "from_transducer",
+      "download_patterns": ["tokens.txt", "encoder-epoch-99-avg-1-chunk-16-left-64.int8.onnx", "decoder-epoch-99-avg-1-chunk-16-left-64.int8.onnx", "joiner-epoch-99-avg-1-chunk-16-left-64.int8.onnx"],
+      "sherpa_config": {"tokens": "tokens.txt", "encoder": "encoder-epoch-99-avg-1-chunk-16-left-64.int8.onnx", "decoder": "decoder-epoch-99-avg-1-chunk-16-left-64.int8.onnx", "joiner": "joiner-epoch-99-avg-1-chunk-16-left-64.int8.onnx"},
+      "languages": ["en"]
+    },
+    "sherpa-zipformer-en-int8-left-128": {
+      "repo": "csukuangfj/sherpa-onnx-streaming-zipformer-en-2023-06-26",
+      "revision": "672fbf1b30579d6585301139bb363f42a0ad4a24",
+      "executor": "sherpa",
+      "recognizer_factory": "from_transducer",
+      "download_patterns": ["tokens.txt", "encoder-epoch-99-avg-1-chunk-16-left-128.int8.onnx", "decoder-epoch-99-avg-1-chunk-16-left-128.int8.onnx", "joiner-epoch-99-avg-1-chunk-16-left-128.int8.onnx"],
+      "sherpa_config": {"tokens": "tokens.txt", "encoder": "encoder-epoch-99-avg-1-chunk-16-left-128.int8.onnx", "decoder": "decoder-epoch-99-avg-1-chunk-16-left-128.int8.onnx", "joiner": "joiner-epoch-99-avg-1-chunk-16-left-128.int8.onnx"},
+      "languages": ["en"]
+    },
+    "vosk-small-en-us-0.15": {
+      "repo": "aglaia-models/vosk-model-small-en-us-0.15",
+      "revision": "0aac829e440a7c8bd30f674a17d9a6d1dbdbbf3a",
+      "executor": "vosk",
+      "languages": ["en"]
+    },
     "canary-180m-flash": {
       "repo": "nvidia/canary-180m-flash",
       "executor": "canary_multitask",

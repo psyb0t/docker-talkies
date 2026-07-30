@@ -6,14 +6,14 @@
 - `linux/amd64` host (no arm64 images — `nemo_toolkit[asr]` + chain doesn't resolve cleanly on aarch64)
 - Optional: NVIDIA GPU + NVIDIA Container Toolkit for the CUDA image (required for `qwen3-tts-0.6b` voice cloning)
 - ~3 GB disk for the CPU image, ~11 GB for the CUDA image
-- ~13 GB additional disk for model weights (CPU image set, includes Kokoro ~330 MB) or ~32 GB (full CUDA set including Qwen3-TTS ~2.2 GB)
+- Additional disk for selected model weights; set `TALKIES_ENABLED_MODELS` to avoid downloading the full registry
 - ~4 GB RAM minimum (whisper-large-v3 needs the working set + overhead); 12 GB+ VRAM for the GPU-only models
 
 ## Quick Install
 
 ### CPU
 
-Serves 2× Whisper + `canary-180m-flash` + `nemotron-3.5-asr-0.6b` (CPU-optimized, via parakeet.cpp) for ASR, plus `kokoro-82m` and `kokoro-82m-nvidia` for TTS. The CUDA-only ASR models aren't worth running on CPU, and the Qwen3-TTS family is CUDA-only.
+Serves 2× Whisper + `canary-180m-flash` + `nemotron-3.5-asr-0.6b` (CPU-optimized, via parakeet.cpp), four selectable Sherpa Zipformer variants, and `vosk-small-en-us-0.15` for ASR, plus `kokoro-82m` and `kokoro-82m-nvidia` for TTS. The CUDA-only ASR models aren't worth running on CPU, and the Qwen3-TTS family is CUDA-only.
 
 ```bash
 docker run -d --name talkies \
@@ -24,7 +24,7 @@ docker run -d --name talkies \
 
 ### CUDA
 
-Serves all seven ASR models plus both TTS engines / 3 backends (`kokoro-82m`, `kokoro-82m-nvidia`, and the 5 Qwen3-TTS slugs). Requires the NVIDIA Container Toolkit on the host.
+Serves all twelve ASR models plus both TTS engines / 3 backends (`kokoro-82m`, `kokoro-82m-nvidia`, and the 5 Qwen3-TTS slugs). Requires the NVIDIA Container Toolkit on the host.
 
 ```bash
 docker run -d --name talkies \
@@ -38,14 +38,14 @@ The CUDA image also runs without `--gpus all` — it binds to CPU, ignores CUDA 
 
 **Verify:** `curl http://localhost:8000/healthz` returns `{"ok": true, "device": "...", "models": [...]}` once boot's done.
 
-**First boot:** the entrypoint downloads every model in `models.json` into `/data/models/<slug>/` and creates `/data/files/` + `/data/custom-voices/`. CPU set is ~13 GB (includes Kokoro), CUDA full set is ~32 GB (includes Qwen3-TTS ~2.2 GB). Bind-mount `/data` so subsequent restarts are no-ops. Restrict the download set with `TALKIES_ENABLED_MODELS` to avoid pulling everything.
+**First boot:** the entrypoint downloads every enabled model into `/data/models/<slug>/` and creates `/data/files/` + `/data/custom-voices/`. Bind-mount `/data` so subsequent restarts are no-ops. Restrict the download set with `TALKIES_ENABLED_MODELS` to avoid pulling everything.
 
 ## CPU vs CUDA Images
 
 | Image | Tag | Platforms | Models served | Image size |
 |---|---|---|---|---|
-| CPU | `psyb0t/talkies:latest` | `linux/amd64` | 2× Whisper, Canary-180m-Flash, Nemotron-3.5-ASR (parakeet.cpp), Kokoro-82M ×2 runtimes | ~3 GB |
-| CUDA | `psyb0t/talkies:latest-cuda` | `linux/amd64` | all seven ASR + Kokoro-82M ×2 runtimes + Qwen3-TTS ×5 | ~11 GB |
+| CPU | `psyb0t/talkies:latest` | `linux/amd64` | 2× Whisper, Canary-180m-Flash, Nemotron-3.5-ASR, Sherpa Zipformer ×4, Vosk, Kokoro-82M ×2 runtimes | ~3 GB |
+| CUDA | `psyb0t/talkies:latest-cuda` | `linux/amd64` | all twelve ASR + Kokoro-82M ×2 runtimes + Qwen3-TTS ×5 | ~11 GB |
 
 The CPU image only ships ASR models that actually finish in a sane time without a GPU. Parakeet-TDT is autoregressive (slow on CPU). Canary-1B and Canary-Qwen-2.5B are flat-out too big. Use the CUDA image for those even if you mostly run on CPU — it gracefully falls back (except for `qwen3-tts-0.6b`, which hard-fails on non-CUDA). Kokoro-82M ships in both images — at 82M params it synthesizes faster than real-time on a 4-core CPU, no GPU needed.
 
@@ -243,7 +243,8 @@ File structure:
 | `repo` | yes | HuggingFace repo id. Pulled via `snapshot_download(local_dir=$TALKIES_DATA_DIR/models/<slug>)` — flat directory keyed by slug, no HF cache indirection. |
 | `revision` | no | Immutable Hugging Face commit SHA to download. Pin this for reproducible custom registries. |
 | `executor` | yes | One of `whisper`, `parakeet`, `parakeet_cpp`, `canary_multitask`, `canary_salm`, `sherpa`, `vosk`, `kokoro`, `kokoro_nvidia`, `qwen3_tts`. Other values fail startup. |
-| `modality` | no | `asr` (default) or `tts`. Drives endpoint guards (`/v1/audio/transcriptions` requires ASR; `/v1/audio/speech` requires TTS) and the `modality` field on `/v1/models` entries. The `kokoro` and `qwen3_tts` executors imply `tts`; the six ASR executors imply `asr`. |
+| `modality` | no | `asr` (default) or `tts`. Drives endpoint guards (`/v1/audio/transcriptions` requires ASR; `/v1/audio/speech` requires TTS) and the `modality` field on `/v1/models` entries. The `kokoro` and `qwen3_tts` executors imply `tts`; the seven ASR executors imply `asr`. |
+| `download_patterns` | no | Non-empty list of static repository-relative paths passed to Hugging Face `snapshot_download(..., allow_patterns=...)`. Use it to limit a multi-variant repository to the files selected by this registry entry. |
 | `default_source_lang` | no | ASR only. Used when the request omits `language`. |
 | `default_target_lang` | no | ASR only. Used by Canary multitask for translation tasks. |
 | `default_task` | no | ASR only. `asr` (transcribe) or `s2t_translation` (Canary multitask only). Default `asr`. |

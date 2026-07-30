@@ -182,10 +182,22 @@ until the last stream releases it. During that time, model-unload endpoints
 and conflicting ASR/TTS requests return HTTP 409. Limits are listed in
 [Configuration](configuration.md#live-asr-and-qwen3-streaming).
 
-### Custom Sherpa-ONNX and Vosk registries
+### Sherpa-ONNX and Vosk
 
-Both images include the Sherpa-ONNX and Vosk runtimes, but their bundled
-registries contain no such slug. Mount a custom registry as described in
+Both images bundle four selectable English Sherpa Zipformer variants and Vosk
+small English. Sherpa runs on CPU in the CPU image and uses its native CUDA
+provider in the CUDA image when the container is started with `--gpus all`.
+Vosk always decodes on CPU. The built-in slugs, their context/quantization
+choices, and constrained downloads are listed in [Models](models.md#sherpa-onnx-and-vosk-choices).
+
+These native engines also implement `POST /v1/audio/transcriptions`: Talkies
+normalizes the uploaded or staged audio to 16 kHz mono PCM WAV, feeds it through
+an isolated native stream to completion, and returns the normal OpenAI-shaped
+response. The WebSocket route remains the choice for incremental partial and
+endpoint events. Vosk supplies word times for verbose responses; Sherpa returns
+word times when its selected model/runtime provides them.
+
+Custom registries can add other Sherpa-ONNX or Vosk models as described in
 [Models](models.md#use-a-custom-registry). A Sherpa transducer entry needs a
 non-empty `sherpa_config` and may use these recognizer factories:
 `from_transducer`, `from_paraformer`, `from_wenet_ctc`, or

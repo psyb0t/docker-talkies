@@ -25,34 +25,34 @@ readonly PCM_FRAME_BYTES=640
 harness_start "$STREAM_MODELS"
 
 if [ ! -f "$FIXTURE_MP3" ]; then
-    echo "FATAL: fixture missing — needs $FIXTURE_MP3" >&2
-    exit 2
+	echo "FATAL: fixture missing — needs $FIXTURE_MP3" >&2
+	exit 2
 fi
 
 if [ -n "${EXPECTED_TEXT:-}" ]; then
-    expected_text="$EXPECTED_TEXT"
+	expected_text="$EXPECTED_TEXT"
 elif [ -f "$FIXTURE_TXT" ]; then
-    expected_text="$(tr -d '\r\n' <"$FIXTURE_TXT")"
+	expected_text="$(tr -d '\r\n' <"$FIXTURE_TXT")"
 else
-    echo "FATAL: transcript fixture missing — needs $FIXTURE_TXT or EXPECTED_TEXT" >&2
-    exit 2
+	echo "FATAL: transcript fixture missing — needs $FIXTURE_TXT or EXPECTED_TEXT" >&2
+	exit 2
 fi
 
 if [ -n "${EXPECTED_WORDS_CSV:-}" ]; then
-    read -r -a EXPECTED_WORDS <<<"$(printf '%s' "$EXPECTED_WORDS_CSV" | tr ',' ' ' | talkies_normalize_text)"
+	read -r -a EXPECTED_WORDS <<<"$(printf '%s' "$EXPECTED_WORDS_CSV" | tr ',' ' ' | talkies_normalize_text)"
 else
-    read -r -a EXPECTED_WORDS <<<"$(printf '%s' "$expected_text" | talkies_normalize_text)"
+	read -r -a EXPECTED_WORDS <<<"$(printf '%s' "$expected_text" | talkies_normalize_text)"
 fi
 
 test_stream_fixture_over_real_websocket() {
-    local summary helper_stderr transcript normalized ready_model sent_frames reported_frames audio_seconds
-    helper_stderr="$(mktemp)"
-    if ! summary="$(
-        docker run --rm -i \
-            --network "container:${HARNESS_CONTAINER}" \
-            --entrypoint python3 \
-            -v "${FIXTURE_MP3}:/fixture/audio.mp3:ro" \
-            "$HARNESS_IMAGE" - "$ASR_SLUG" "$PCM_FRAME_BYTES" 2>"$helper_stderr" <<'PY'
+	local summary helper_stderr transcript normalized ready_model sent_frames reported_frames audio_seconds
+	helper_stderr="$(mktemp)"
+	if ! summary="$(
+		docker run --rm -i \
+			--network "container:${HARNESS_CONTAINER}" \
+			--entrypoint python3 \
+			-v "${FIXTURE_MP3}:/fixture/audio.mp3:ro" \
+			"$HARNESS_IMAGE" - "$ASR_SLUG" "$PCM_FRAME_BYTES" 2>"$helper_stderr" <<'PY'
 import asyncio
 import json
 import subprocess
@@ -172,44 +172,112 @@ async def stream_fixture() -> dict[str, object]:
 
 print(json.dumps(asyncio.run(stream_fixture())))
 PY
-    )"; then
-        echo "  FAIL: real WebSocket fixture stream failed"
-        sed 's/^/  helper: /' "$helper_stderr" >&2
-        rm -f "$helper_stderr"
-        return 1
-    fi
-    rm -f "$helper_stderr"
+	)"; then
+		echo "  FAIL: real WebSocket fixture stream failed"
+		sed 's/^/  helper: /' "$helper_stderr" >&2
+		rm -f "$helper_stderr"
+		return 1
+	fi
+	rm -f "$helper_stderr"
 
-    if ! printf '%s\n' "$summary" | jq -e . >/dev/null; then
-        echo "  FAIL: helper returned invalid JSON: $summary"
-        return 1
-    fi
-    ready_model="$(printf '%s\n' "$summary" | jq -r '.ready.model')"
-    transcript="$(printf '%s\n' "$summary" | jq -r '.transcript')"
-    sent_frames="$(printf '%s\n' "$summary" | jq -r '.sent_frames')"
-    reported_frames="$(printf '%s\n' "$summary" | jq -r '.stats.frames')"
-    audio_seconds="$(printf '%s\n' "$summary" | jq -r '.stats.audio_seconds')"
-    normalized="$(printf '%s' "$transcript" | talkies_normalize_text)"
+	if ! printf '%s\n' "$summary" | jq -e . >/dev/null; then
+		echo "  FAIL: helper returned invalid JSON: $summary"
+		return 1
+	fi
+	ready_model="$(printf '%s\n' "$summary" | jq -r '.ready.model')"
+	transcript="$(printf '%s\n' "$summary" | jq -r '.transcript')"
+	sent_frames="$(printf '%s\n' "$summary" | jq -r '.sent_frames')"
+	reported_frames="$(printf '%s\n' "$summary" | jq -r '.stats.frames')"
+	audio_seconds="$(printf '%s\n' "$summary" | jq -r '.stats.audio_seconds')"
+	normalized="$(printf '%s' "$transcript" | talkies_normalize_text)"
 
-    assert_eq "$ready_model" "$ASR_SLUG" "ready model"
-    assert_eq "$reported_frames" "$sent_frames" "stats frame count"
-    if ! awk -v seconds="$audio_seconds" 'BEGIN { exit !(seconds > 0) }'; then
-        echo "  FAIL: non-positive streamed audio duration: $audio_seconds"
-        return 1
-    fi
+	assert_eq "$ready_model" "$ASR_SLUG" "ready model"
+	assert_eq "$reported_frames" "$sent_frames" "stats frame count"
+	if ! awk -v seconds="$audio_seconds" 'BEGIN { exit !(seconds > 0) }'; then
+		echo "  FAIL: non-positive streamed audio duration: $audio_seconds"
+		return 1
+	fi
 
-    local word
-    for word in "${EXPECTED_WORDS[@]}"; do
-        if [[ " $normalized " != *" $word "* ]]; then
-            echo "  FAIL: streamed transcript missing expected word '$word'"
-            echo "  transcript: $transcript"
-            return 1
-        fi
-    done
+	local word
+	for word in "${EXPECTED_WORDS[@]}"; do
+		if [[ " $normalized " != *" $word "* ]]; then
+			echo "  FAIL: streamed transcript missing expected word '$word'"
+			echo "  transcript: $transcript"
+			return 1
+		fi
+	done
 
-    echo "  streamed: $transcript"
-    echo "  ok: ready, transcript, final, stats; frames=$sent_frames audio=${audio_seconds}s"
-    echo "OK: ${FUNCNAME[0]}"
+	echo "  streamed: $transcript"
+	echo "  ok: ready, transcript, final, stats; frames=$sent_frames audio=${audio_seconds}s"
+	echo "OK: ${FUNCNAME[0]}"
 }
 
-harness_run_tests test_stream_fixture_over_real_websocket
+test_file_fixture_over_openai_http() {
+	local response verbose_response transcript normalized word
+	response="$(talkies_transcribe "$ASR_SLUG" "$FIXTURE_MP3" "json")" || {
+		echo "  FAIL: OpenAI-compatible file transcription failed"
+		return 1
+	}
+	if ! printf '%s\n' "$response" | jq -e '
+		type == "object"
+		and ((keys | sort) == ["text"])
+		and (.text | type == "string" and length > 0)
+	' >/dev/null; then
+		echo "  FAIL: OpenAI json response does not match the text envelope"
+		echo "  body: $(printf '%s\n' "$response" | jq -c . 2>/dev/null || printf '%s' "$response")"
+		return 1
+	fi
+	transcript="$(printf '%s\n' "$response" | jq -r '.text')"
+	verbose_response="$(talkies_transcribe "$ASR_SLUG" "$FIXTURE_MP3" "verbose_json" \
+		"timestamp_granularities[]=segment" \
+		"timestamp_granularities[]=word")" || {
+		echo "  FAIL: OpenAI-compatible verbose file transcription failed"
+		return 1
+	}
+	if ! printf '%s\n' "$verbose_response" | jq -e '
+		type == "object"
+		and ((keys | sort) == ["duration", "language", "segments", "task", "text", "words"])
+		and (.task == "transcribe")
+		and (.language | type == "string" and length > 0)
+		and (.duration | type == "number" and . >= 0)
+		and (.text | type == "string" and length > 0)
+		and (.segments | type == "array")
+		and (.words | type == "array")
+		and all(
+			.segments[];
+			type == "object"
+			and ((.start | type) == "number" and .start >= 0)
+			and ((.end | type) == "number" and .end >= .start)
+			and (.text | type == "string")
+		)
+		and all(
+			.words[];
+			type == "object"
+			and (.word | type == "string")
+			and ((.start | type) == "number" and .start >= 0)
+			and ((.end | type) == "number" and .end >= .start)
+		)
+	' >/dev/null; then
+		echo "  FAIL: OpenAI verbose_json response does not match the documented contract"
+		echo "  body: $(printf '%s\n' "$verbose_response" | jq -c . 2>/dev/null || printf '%s' "$verbose_response")"
+		return 1
+	fi
+	if [ "$transcript" != "$(printf '%s\n' "$verbose_response" | jq -r '.text')" ]; then
+		echo "  FAIL: json and verbose_json returned different transcript text"
+		return 1
+	fi
+	normalized="$(printf '%s' "$transcript" | talkies_normalize_text)"
+	for word in "${EXPECTED_WORDS[@]}"; do
+		if [[ " $normalized " != *" $word "* ]]; then
+			echo "  FAIL: HTTP transcript missing expected word '$word'"
+			echo "  transcript: $transcript"
+			return 1
+		fi
+	done
+	echo "  transcribed: $transcript"
+	echo "OK: ${FUNCNAME[0]}"
+}
+
+harness_run_tests \
+	test_stream_fixture_over_real_websocket \
+	test_file_fixture_over_openai_http
