@@ -111,6 +111,21 @@ Audio longer than `TALKIES_VAD_CHUNK_THRESHOLD` seconds gets sliced through Sile
 | `TALKIES_VAD_SPEECH_PAD_MS` | `200` | Silero VAD param — silence padding (ms) around each detected speech region. |
 | `TALKIES_VAD_THRESHOLD` | `0.5` | Silero VAD speech-probability threshold. Lower = more aggressive. |
 
+### Live ASR streaming
+
+`WS /v1/audio/transcriptions/stream` accepts headerless 16 kHz mono PCM16LE.
+It is separate from the OpenAI-compatible upload route. See the repository's
+[`streaming.md`](https://github.com/psyb0t/docker-talkies/blob/main/streaming.md)
+for the protocol and client examples.
+
+| Var | Default | What it does |
+|---|---|---|
+| `TALKIES_STREAM_MAX_CONNECTIONS` | `4` | Maximum active ASR WebSockets per container. Streams may share one pinned model; attempts to switch models while one is active return a conflict. |
+| `TALKIES_STREAM_MAX_FRAME_BYTES` | `65536` | Maximum binary PCM frame size. Frames must be non-empty, contain whole 16-bit samples, and be 2–16777216 bytes. |
+| `TALKIES_STREAM_MAX_BUFFER_SECONDS` | `5` | Faster-whisper rolling-window budget. Must hold one configured maximum-size frame; native decoders process each frame directly. |
+| `TALKIES_STREAM_IDLE_TIMEOUT` | `30s` | Maximum wait between client messages before close code 4408. |
+| `TALKIES_STREAM_MAX_DURATION` | `4h` | Maximum accepted audio duration per WebSocket. |
+
 ### Qwen3-TTS streaming
 
 | Var | Default | What it does |
@@ -226,8 +241,9 @@ File structure:
 | Field | Required | Notes |
 |---|---|---|
 | `repo` | yes | HuggingFace repo id. Pulled via `snapshot_download(local_dir=$TALKIES_DATA_DIR/models/<slug>)` — flat directory keyed by slug, no HF cache indirection. |
-| `executor` | yes | One of `whisper`, `parakeet`, `parakeet_cpp`, `canary_multitask`, `canary_salm`, `kokoro`, `kokoro_nvidia`, `qwen3_tts`. Other values fail startup. |
-| `modality` | no | `asr` (default) or `tts`. Drives endpoint guards (`/v1/audio/transcriptions` requires ASR; `/v1/audio/speech` requires TTS) and the `modality` field on `/v1/models` entries. The `kokoro` and `qwen3_tts` executors imply `tts`; the four ASR executors imply `asr`. |
+| `revision` | no | Immutable Hugging Face commit SHA to download. Pin this for reproducible custom registries. |
+| `executor` | yes | One of `whisper`, `parakeet`, `parakeet_cpp`, `canary_multitask`, `canary_salm`, `sherpa`, `vosk`, `kokoro`, `kokoro_nvidia`, `qwen3_tts`. Other values fail startup. |
+| `modality` | no | `asr` (default) or `tts`. Drives endpoint guards (`/v1/audio/transcriptions` requires ASR; `/v1/audio/speech` requires TTS) and the `modality` field on `/v1/models` entries. The `kokoro` and `qwen3_tts` executors imply `tts`; the six ASR executors imply `asr`. |
 | `default_source_lang` | no | ASR only. Used when the request omits `language`. |
 | `default_target_lang` | no | ASR only. Used by Canary multitask for translation tasks. |
 | `default_task` | no | ASR only. `asr` (transcribe) or `s2t_translation` (Canary multitask only). Default `asr`. |

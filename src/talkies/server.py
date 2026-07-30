@@ -28,7 +28,16 @@ from contextlib import asynccontextmanager
 from typing import Any
 from urllib.parse import unquote
 
-from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi import (
+    FastAPI,
+    File,
+    Form,
+    HTTPException,
+    Request,
+    UploadFile,
+    WebSocket,
+    WebSocketDisconnect,
+)
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Response
 from pydantic import BaseModel, Field
 from starlette.responses import StreamingResponse
@@ -45,9 +54,30 @@ from .audio import (
     to_wav_16k_split_lr,
 )
 from .auth import BearerAuthMiddleware
+from .asr_streaming import (
+    EVENT_CANCEL,
+    EVENT_END,
+    EVENT_ENDPOINT,
+    EVENT_FINAL,
+    EVENT_PARTIAL,
+    MAX_CONTROL_MESSAGE_BYTES,
+    StreamConfig,
+    StreamSessionState,
+    StreamingProtocolError,
+    TranscriptEvent,
+    decode_json_message,
+    pack_event,
+    parse_control_message,
+    parse_start_message,
+)
 from .logging import configure as configure_logging
 from .mcp_server import build_mcp_server
-from .models import build_backends, is_asr_backend, is_tts_backend
+from .models import (
+    build_backends,
+    is_asr_backend,
+    is_streaming_asr_backend,
+    is_tts_backend,
+)
 from .models.base import TranscribeResult
 
 
@@ -102,6 +132,101 @@ REGISTRY = config.load_registry()
 DEVICE = _resolve_device(config.DEVICE)
 BACKENDS = build_backends(REGISTRY, DEVICE)
 
+_STREAM_CLOSE_NORMAL = 1000
+_STREAM_CLOSE_PROTOCOL_ERROR = 4400
+_STREAM_CLOSE_IDLE_TIMEOUT = 4408
+_STREAM_CLOSE_NOT_FOUND = 4404
+_STREAM_CLOSE_CONFLICT = 4409
+_STREAM_CLOSE_LIMIT = 4429
+_STREAM_CLOSE_INTERNAL_ERROR = 4500
+_STREAM_MAX_BUFFER_FRAMES = 256
+_STREAM_MAX_PENDING_MESSAGES = 1
+_stream_lock = asyncio.Lock()
+_active_streams: dict[str, int] = {}
+
+
+def _active_stream_count(model_id: str | None = None) -> int:
+    if model_id is None:
+        return sum(_active_streams.values())
+    return _active_streams.get(model_id, 0)
+
+
+async def _reserve_stream(model_id: str) -> None:
+    async with _stream_lock:
+        if _active_stream_count() >= config.STREAM_MAX_CONNECTIONS:
+            raise StreamingProtocolError(
+                "connection_limit",
+                "stream connection limit reached",
+            )
+        active_siblings = [
+            sibling_id
+            for sibling_id, count in _active_streams.items()
+            if sibling_id != model_id and count > 0
+        ]
+        if active_siblings:
+            raise StreamingProtocolError(
+                "model_busy",
+                "another model has active streaming sessions",
+            )
+        siblings = [
+            backend
+            for sibling_id, backend in BACKENDS.items()
+            if sibling_id != model_id and backend.loaded()
+        ]
+        if siblings:
+            await asyncio.gather(
+                *(backend.unload() for backend in siblings),
+                return_exceptions=False,
+            )
+            await _wait_for_gpu_drain()
+        _active_streams[model_id] = _active_stream_count(model_id) + 1
+
+
+async def _release_stream(model_id: str) -> None:
+    async with _stream_lock:
+        remaining = _active_stream_count(model_id) - 1
+        if remaining > 0:
+            _active_streams[model_id] = remaining
+            return
+        _active_streams.pop(model_id, None)
+
+
+async def _evict_siblings(model_id: str) -> None:
+    async with _stream_lock:
+        active_siblings = [
+            sibling_id
+            for sibling_id, count in _active_streams.items()
+            if sibling_id != model_id and count > 0
+        ]
+        if active_siblings:
+            raise HTTPException(
+                status_code=409,
+                detail="another model has active streaming sessions",
+            )
+        siblings = [
+            backend
+            for sibling_id, backend in BACKENDS.items()
+            if sibling_id != model_id and backend.loaded()
+        ]
+        if not siblings:
+            return
+        log.info(
+            "evicting sibling backends",
+            extra={
+                "model_id": model_id,
+                "siblings": [
+                    sibling_id
+                    for sibling_id, backend in BACKENDS.items()
+                    if sibling_id != model_id and backend.loaded()
+                ],
+            },
+        )
+        await asyncio.gather(
+            *(backend.unload() for backend in siblings),
+            return_exceptions=False,
+        )
+        await _wait_for_gpu_drain()
+
 
 async def _idle_sweeper() -> None:
     """Unload backends idle longer than TALKIES_MODEL_TTL."""
@@ -126,7 +251,10 @@ async def _idle_sweeper() -> None:
                     ttl,
                 )
                 try:
-                    await backend.unload()
+                    async with _stream_lock:
+                        if _active_stream_count(model_id):
+                            continue
+                        await backend.unload()
                 except Exception:  # noqa: BLE001
                     log.exception("idle sweeper: unload %s failed", model_id)
         except asyncio.CancelledError:
@@ -306,6 +434,245 @@ def list_loaded() -> dict[str, Any]:
     }
 
 
+async def _send_stream_error(
+    websocket: WebSocket,
+    code: str,
+    detail: str,
+    close_code: int,
+) -> None:
+    await websocket.send_json(pack_event("error", code=code, detail=detail))
+    await websocket.close(code=close_code, reason=detail)
+
+
+async def _receive_stream_json(
+    websocket: WebSocket,
+    timeout_seconds: float,
+) -> object:
+    message = await asyncio.wait_for(
+        websocket.receive(),
+        timeout=timeout_seconds,
+    )
+    if message["type"] == "websocket.disconnect":
+        raise WebSocketDisconnect(message.get("code", _STREAM_CLOSE_NORMAL))
+    text = message.get("text")
+    if text is None:
+        raise StreamingProtocolError(
+            "invalid_message",
+            "expected a JSON text message",
+        )
+    return decode_json_message(text)
+
+
+async def _start_streaming_backend(
+    backend: Any,
+    stream_config: StreamConfig,
+) -> Any:
+    executor = REGISTRY[stream_config.model].get("executor", "whisper")
+    if executor == "parakeet_cpp":
+        return await backend.start_stream(
+            language=stream_config.language,
+            max_frame_bytes=config.STREAM_MAX_FRAME_BYTES,
+        )
+    return await backend.start_stream(stream_config)
+
+
+async def _send_backend_events(
+    websocket: WebSocket,
+    output: object,
+    state: StreamSessionState,
+    stream_config: StreamConfig,
+    force_final: bool = False,
+) -> None:
+    outputs = output if isinstance(output, list) else [output]
+    for item in outputs:
+        if isinstance(item, TranscriptEvent):
+            if item.event_type == EVENT_PARTIAL and not stream_config.interim_results:
+                continue
+            await websocket.send_json(item.to_dict())
+            continue
+        if not isinstance(item, dict):
+            raise RuntimeError("streaming backend returned an invalid event")
+        event_type = EVENT_FINAL if force_final else EVENT_PARTIAL
+        if not force_final and item.get("eou") is True:
+            event_type = EVENT_ENDPOINT
+        if event_type == EVENT_PARTIAL and not stream_config.interim_results:
+            continue
+        words = item.get("words") if stream_config.word_timestamps else []
+        if not isinstance(words, list):
+            words = []
+        text = str(item.get("text", "")).strip()
+        if event_type == EVENT_PARTIAL and not text and not words:
+            continue
+        event = state.transcript_event(
+            event_type,
+            text,
+            words=[word for word in words if isinstance(word, dict)],
+        )
+        await websocket.send_json(event.to_dict())
+
+
+@app.websocket("/v1/audio/transcriptions/stream")
+async def transcribe_stream(websocket: WebSocket) -> None:
+    await websocket.accept()
+    session: Any | None = None
+    stream_config: StreamConfig | None = None
+    reserved = False
+    state = StreamSessionState(
+        max_buffer_bytes=config.STREAM_MAX_BUFFER_BYTES,
+        max_buffer_frames=_STREAM_MAX_BUFFER_FRAMES,
+    )
+    frame_count = 0
+    try:
+        start_message = await _receive_stream_json(
+            websocket,
+            config.STREAM_IDLE_TIMEOUT_SECONDS,
+        )
+        stream_config = parse_start_message(start_message)
+        if stream_config.model not in BACKENDS:
+            await _send_stream_error(
+                websocket,
+                "unknown_model",
+                "requested model is not configured",
+                _STREAM_CLOSE_NOT_FOUND,
+            )
+            return
+        backend = BACKENDS[stream_config.model]
+        if not is_streaming_asr_backend(backend):
+            await _send_stream_error(
+                websocket,
+                "streaming_not_supported",
+                "requested model does not support streaming",
+                _STREAM_CLOSE_CONFLICT,
+            )
+            return
+
+        await _reserve_stream(stream_config.model)
+        reserved = True
+        session = await _start_streaming_backend(backend, stream_config)
+        await websocket.send_json(
+            pack_event(
+                "ready",
+                model=stream_config.model,
+                encoding=stream_config.encoding,
+                sample_rate=stream_config.sample_rate,
+                channels=stream_config.channels,
+            )
+        )
+
+        while True:
+            message = await asyncio.wait_for(
+                websocket.receive(),
+                timeout=config.STREAM_IDLE_TIMEOUT_SECONDS,
+            )
+            if message["type"] == "websocket.disconnect":
+                raise WebSocketDisconnect(message.get("code", _STREAM_CLOSE_NORMAL))
+            frame = message.get("bytes")
+            if frame is not None:
+                state.reserve_frame(
+                    frame,
+                    max_frame_bytes=config.STREAM_MAX_FRAME_BYTES,
+                )
+                if state.audio_seconds > config.STREAM_MAX_DURATION_SECONDS:
+                    state.release_frame(len(frame))
+                    raise StreamingProtocolError(
+                        "duration_limit",
+                        "stream duration limit reached",
+                    )
+                frame_count += 1
+                try:
+                    output = await session.feed(frame)
+                finally:
+                    state.release_frame(len(frame))
+                await _send_backend_events(
+                    websocket,
+                    output,
+                    state,
+                    stream_config,
+                )
+                continue
+
+            text = message.get("text")
+            if text is None:
+                raise StreamingProtocolError(
+                    "invalid_message",
+                    "message must be binary PCM or JSON control",
+                )
+            control_message = decode_json_message(text)
+            control = parse_control_message(control_message)
+            if control == EVENT_CANCEL:
+                await session.cancel()
+                await websocket.send_json(
+                    pack_event(
+                        "stats",
+                        audio_seconds=state.audio_seconds,
+                        frames=frame_count,
+                        canceled=True,
+                    )
+                )
+                await websocket.close(code=_STREAM_CLOSE_NORMAL)
+                return
+            if control == EVENT_END:
+                final_event = await session.finalize()
+                await _send_backend_events(
+                    websocket,
+                    final_event,
+                    state,
+                    stream_config,
+                    force_final=True,
+                )
+                await websocket.send_json(
+                    pack_event(
+                        "stats",
+                        audio_seconds=state.audio_seconds,
+                        frames=frame_count,
+                        canceled=False,
+                    )
+                )
+                await websocket.close(code=_STREAM_CLOSE_NORMAL)
+                return
+    except asyncio.TimeoutError:
+        if session is not None:
+            await session.cancel()
+        await _send_stream_error(
+            websocket,
+            "idle_timeout",
+            "stream timed out waiting for client data",
+            _STREAM_CLOSE_IDLE_TIMEOUT,
+        )
+    except StreamingProtocolError as exc:
+        if session is not None:
+            await session.cancel()
+        close_code = _STREAM_CLOSE_PROTOCOL_ERROR
+        if exc.code == "connection_limit":
+            close_code = _STREAM_CLOSE_LIMIT
+        if exc.code == "model_busy":
+            close_code = _STREAM_CLOSE_CONFLICT
+        await _send_stream_error(
+            websocket,
+            exc.code,
+            exc.detail,
+            close_code,
+        )
+    except WebSocketDisconnect:
+        if session is not None:
+            await session.cancel()
+    except Exception:  # noqa: BLE001
+        log.exception("streaming transcription failed")
+        if session is not None:
+            await session.cancel()
+        await _send_stream_error(
+            websocket,
+            "server_error",
+            "streaming transcription failed",
+            _STREAM_CLOSE_INTERNAL_ERROR,
+        )
+    finally:
+        if session is not None:
+            await session.close()
+        if reserved and stream_config is not None:
+            await _release_stream(stream_config.model)
+
+
 @app.delete("/api/ps/{model_id:path}")
 async def unload_one(model_id: str) -> JSONResponse:
     decoded = unquote(model_id)
@@ -314,21 +681,33 @@ async def unload_one(model_id: str) -> JSONResponse:
         return JSONResponse({"detail": f"unknown model {decoded!r}"}, status_code=404)
     if not backend.loaded():
         return JSONResponse({"detail": "not loaded"}, status_code=404)
-    await backend.unload()
+    async with _stream_lock:
+        if _active_stream_count(decoded):
+            return JSONResponse(
+                {"detail": "model has active streaming sessions"},
+                status_code=409,
+            )
+        await backend.unload()
     return JSONResponse({"unloaded": decoded}, status_code=200)
 
 
 @app.post("/unload")
 async def unload_all() -> dict[str, Any]:
-    unloaded = []
-    for model_id, backend in BACKENDS.items():
-        if not backend.loaded():
-            continue
-        try:
-            await backend.unload()
-            unloaded.append(model_id)
-        except Exception:  # noqa: BLE001
-            log.exception("unload %s failed", model_id)
+    async with _stream_lock:
+        if _active_stream_count():
+            raise HTTPException(
+                status_code=409,
+                detail="models have active streaming sessions",
+            )
+        unloaded = []
+        for model_id, backend in BACKENDS.items():
+            if not backend.loaded():
+                continue
+            try:
+                await backend.unload()
+                unloaded.append(model_id)
+            except Exception:  # noqa: BLE001
+                log.exception("unload %s failed", model_id)
     return {"unloaded": unloaded}
 
 
@@ -472,17 +851,7 @@ async def speech(body: SpeechRequest) -> Response:
     if not body.input.strip():
         raise HTTPException(status_code=400, detail="input text is empty")
 
-    # Sibling eviction — TTS competes with ASR for the same VRAM/RAM pool.
-    siblings = [(mid, b) for mid, b in BACKENDS.items() if mid != model and b.loaded()]
-    if siblings:
-        log.info(
-            "evicting %d sibling backend(s) before loading %s (tts): %s",
-            len(siblings),
-            model,
-            [mid for mid, _ in siblings],
-        )
-        await asyncio.gather(*(b.unload() for _, b in siblings), return_exceptions=True)
-        await _wait_for_gpu_drain()
+    await _evict_siblings(model)
 
     # PCM streaming path — only when the backend natively supports it
     # (currently Qwen3-TTS only). Yields int16 LE PCM chunks as they are
@@ -728,18 +1097,7 @@ async def run_transcription_pipeline(
     needs_timestamps = fmt in _VERBOSE_FORMATS or do_diarize
     grans = list(granularities or [])
 
-    # Evict sibling backends — all talkies models compete for the same
-    # GPU/RAM, so loading a new one while another is resident risks OOM.
-    siblings = [(mid, b) for mid, b in BACKENDS.items() if mid != model and b.loaded()]
-    if siblings:
-        log.info(
-            "evicting %d sibling backend(s) before loading %s: %s",
-            len(siblings),
-            model,
-            [mid for mid, _ in siblings],
-        )
-        await asyncio.gather(*(b.unload() for _, b in siblings), return_exceptions=True)
-        await _wait_for_gpu_drain()
+    await _evict_siblings(model)
 
     if do_diarize:
         l_path, r_path = await asyncio.to_thread(
@@ -1124,7 +1482,17 @@ def main() -> int:
     import uvicorn
 
     log.info("talkies: starting on 0.0.0.0:8000")
-    uvicorn.run(app, host="0.0.0.0", port=8000, log_config=None)
+    uvicorn.run(
+        app,
+        host="0.0.0.0",
+        port=8000,
+        log_config=None,
+        ws_max_size=max(
+            config.STREAM_MAX_FRAME_BYTES,
+            MAX_CONTROL_MESSAGE_BYTES,
+        ),
+        ws_max_queue=_STREAM_MAX_PENDING_MESSAGES,
+    )
     return 0
 
 

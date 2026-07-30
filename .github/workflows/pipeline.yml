@@ -7,13 +7,13 @@ jobs:
     if: github.ref_name == github.event.repository.default_branch || startsWith(github.ref, 'refs/tags/')
     permissions:
       contents: write
-    uses: psyb0t/reusable-github-workflows/.github/workflows/create-badges.yml@master
+    uses: psyb0t/reusable-github-workflows/.github/workflows/create-badges.yml@10f8490356442f07143efebe80a3d8569c989786 # master
 
   call-docker-image-workflow:
     permissions:
       contents: write # GitHub Release
       security-events: write # upload the Grype SARIF to the Security tab
-    uses: psyb0t/reusable-github-workflows/.github/workflows/docker-image-workflow.yml@master
+    uses: psyb0t/reusable-github-workflows/.github/workflows/docker-image-workflow.yml@10f8490356442f07143efebe80a3d8569c989786 # master
 
     with:
       repository_name: psyb0t/talkies
@@ -39,7 +39,7 @@ jobs:
   publish-to-clawhub:
     needs: [call-docker-image-workflow]
     if: startsWith(github.ref, 'refs/tags/')
-    uses: psyb0t/reusable-github-workflows/.github/workflows/clawhub-publish.yml@master
+    uses: psyb0t/reusable-github-workflows/.github/workflows/clawhub-publish.yml@10f8490356442f07143efebe80a3d8569c989786 # master
 
     secrets:
       clawhub_token: ${{ secrets.CLAWHUB_TOKEN }}
@@ -50,4 +50,4 @@ jobs:
     permissions:
       id-token: write
       contents: read
-    uses: psyb0t/reusable-github-workflows/.github/workflows/mcp-registry-publish.yml@master
+    uses: psyb0t/reusable-github-workflows/.github/workflows/mcp-registry-publish.yml@10f8490356442f07143efebe80a3d8569c989786 # master

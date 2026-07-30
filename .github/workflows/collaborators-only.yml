@@ -6,7 +6,7 @@ on:
 
 jobs:
   call-collaborators-only-workflow:
-    uses: psyb0t/reusable-github-workflows/.github/workflows/collaborators-only-workflow.yml@master
+    uses: psyb0t/reusable-github-workflows/.github/workflows/collaborators-only-workflow.yml@10f8490356442f07143efebe80a3d8569c989786 # master
     with:
       close_message: "No PRs. Best security policy ever. Open an issue and I'll fix it myself."
       lock: true

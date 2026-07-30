@@ -27,8 +27,9 @@ matplotlib==3.9.2
 faster-whisper==1.2.0
 ctranslate2==4.6.0
 silero-vad==6.0.0
-onnxruntime==1.20.1
-onnxruntime-gpu==1.20.1
+# Keep the CPU and CUDA distributions on their matching published release.
+onnxruntime==1.21.0
+onnxruntime-gpu==1.21.0
 numpy==1.26.4
 kokoro==0.9.4
 phonemizer-fork==3.3.2

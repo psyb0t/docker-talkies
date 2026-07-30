@@ -20,7 +20,15 @@ def _reload_config(monkeypatch, models_path: Path, **env: str):
     monkeypatch.setenv("TALKIES_MODELS_FILE", str(models_path))
     # Reset everything that load_registry cares about so previous tests
     # can't leak filters into this one.
-    for var in ("TALKIES_ENABLED_MODELS", "TALKIES_PRELOAD"):
+    for var in (
+        "TALKIES_ENABLED_MODELS",
+        "TALKIES_PRELOAD",
+        "TALKIES_STREAM_MAX_CONNECTIONS",
+        "TALKIES_STREAM_MAX_FRAME_BYTES",
+        "TALKIES_STREAM_MAX_BUFFER_SECONDS",
+        "TALKIES_STREAM_IDLE_TIMEOUT",
+        "TALKIES_STREAM_MAX_DURATION",
+    ):
         monkeypatch.delenv(var, raising=False)
     for k, v in env.items():
         monkeypatch.setenv(k, v)
@@ -32,23 +40,34 @@ def _reload_config(monkeypatch, models_path: Path, **env: str):
 def fake_registry(tmp_path: Path) -> Path:
     """Write a minimal but valid models.json that mirrors the real schema."""
     p = tmp_path / "models.json"
-    p.write_text(json.dumps({
-        "models": {
-            "whisper-tiny": {"repo": "openai/whisper-tiny", "executor": "whisper"},
-            "parakeet-mini": {"repo": "nvidia/parakeet-mini", "executor": "parakeet"},
-            "canary-tiny": {
-                "repo": "nvidia/canary-tiny",
-                "executor": "canary_multitask",
-                "default_task": "asr",
-                "default_source_lang": "en",
-                "default_target_lang": "en",
-            },
-        }
-    }))
+    p.write_text(
+        json.dumps(
+            {
+                "models": {
+                    "whisper-tiny": {
+                        "repo": "openai/whisper-tiny",
+                        "executor": "whisper",
+                    },
+                    "parakeet-mini": {
+                        "repo": "nvidia/parakeet-mini",
+                        "executor": "parakeet",
+                    },
+                    "canary-tiny": {
+                        "repo": "nvidia/canary-tiny",
+                        "executor": "canary_multitask",
+                        "default_task": "asr",
+                        "default_source_lang": "en",
+                        "default_target_lang": "en",
+                    },
+                }
+            }
+        )
+    )
     return p
 
 
 # ── ENABLED_MODELS env parsing ───────────────────────────────────────────────
+
 
 def test_enabled_models_empty_means_all(monkeypatch, fake_registry):
     cfg = _reload_config(monkeypatch, fake_registry)
@@ -59,7 +78,8 @@ def test_enabled_models_empty_means_all(monkeypatch, fake_registry):
 
 def test_enabled_models_filters_registry(monkeypatch, fake_registry):
     cfg = _reload_config(
-        monkeypatch, fake_registry,
+        monkeypatch,
+        fake_registry,
         TALKIES_ENABLED_MODELS="whisper-tiny,canary-tiny",
     )
     assert cfg.ENABLED_MODELS == ["whisper-tiny", "canary-tiny"]
@@ -71,7 +91,8 @@ def test_enabled_models_filters_registry(monkeypatch, fake_registry):
 
 def test_enabled_models_preserves_order(monkeypatch, fake_registry):
     cfg = _reload_config(
-        monkeypatch, fake_registry,
+        monkeypatch,
+        fake_registry,
         TALKIES_ENABLED_MODELS="canary-tiny,whisper-tiny",
     )
     reg = cfg.load_registry()
@@ -80,7 +101,8 @@ def test_enabled_models_preserves_order(monkeypatch, fake_registry):
 
 def test_enabled_models_trims_whitespace_and_blanks(monkeypatch, fake_registry):
     cfg = _reload_config(
-        monkeypatch, fake_registry,
+        monkeypatch,
+        fake_registry,
         TALKIES_ENABLED_MODELS=" whisper-tiny , , canary-tiny ,",
     )
     assert cfg.ENABLED_MODELS == ["whisper-tiny", "canary-tiny"]
@@ -88,7 +110,8 @@ def test_enabled_models_trims_whitespace_and_blanks(monkeypatch, fake_registry):
 
 def test_enabled_models_unknown_slug_fails_fast(monkeypatch, fake_registry):
     cfg = _reload_config(
-        monkeypatch, fake_registry,
+        monkeypatch,
+        fake_registry,
         TALKIES_ENABLED_MODELS="whisper-tiny,does-not-exist",
     )
     with pytest.raises(ValueError, match="does-not-exist"):
@@ -97,7 +120,8 @@ def test_enabled_models_unknown_slug_fails_fast(monkeypatch, fake_registry):
 
 def test_enabled_models_all_unknown_fails_fast(monkeypatch, fake_registry):
     cfg = _reload_config(
-        monkeypatch, fake_registry,
+        monkeypatch,
+        fake_registry,
         TALKIES_ENABLED_MODELS="nope-a,nope-b",
     )
     with pytest.raises(ValueError, match=r"nope-a.*nope-b|nope-b.*nope-a"):
@@ -105,6 +129,7 @@ def test_enabled_models_all_unknown_fails_fast(monkeypatch, fake_registry):
 
 
 # ── load_registry schema validation (unchanged behavior, still covered) ──────
+
 
 def test_load_registry_missing_file_raises(monkeypatch, tmp_path):
     missing = tmp_path / "no-such-file.json"
@@ -123,9 +148,9 @@ def test_load_registry_bad_top_level_raises(monkeypatch, tmp_path):
 
 def test_load_registry_unknown_executor_raises(monkeypatch, tmp_path):
     p = tmp_path / "models.json"
-    p.write_text(json.dumps({
-        "models": {"x": {"repo": "foo/bar", "executor": "telepathy"}}
-    }))
+    p.write_text(
+        json.dumps({"models": {"x": {"repo": "foo/bar", "executor": "telepathy"}}})
+    )
     cfg = _reload_config(monkeypatch, p)
     with pytest.raises(ValueError, match="telepathy"):
         cfg.load_registry()
@@ -140,6 +165,7 @@ def test_load_registry_missing_repo_raises(monkeypatch, tmp_path):
 
 
 # ── duration parser smoke ─────────────────────────────────────────────────────
+
 
 def test_duration_env_accepts_bare_seconds(monkeypatch, fake_registry):
     cfg = _reload_config(monkeypatch, fake_registry, TALKIES_MODEL_TTL="120")
@@ -170,3 +196,52 @@ def test_device_rejects_garbage(monkeypatch, fake_registry):
 def test_device_accepts_cuda_n(monkeypatch, fake_registry):
     cfg = _reload_config(monkeypatch, fake_registry, TALKIES_DEVICE="cuda:1")
     assert cfg.DEVICE == "cuda:1"
+
+
+@pytest.mark.parametrize(
+    ("name", "value"),
+    (
+        ("TALKIES_STREAM_MAX_CONNECTIONS", "0"),
+        ("TALKIES_STREAM_MAX_FRAME_BYTES", "1"),
+        ("TALKIES_STREAM_MAX_BUFFER_SECONDS", "0"),
+        ("TALKIES_STREAM_IDLE_TIMEOUT", "0s"),
+        ("TALKIES_STREAM_MAX_DURATION", "25h"),
+    ),
+)
+def test_stream_limits_reject_out_of_range_values(
+    monkeypatch,
+    fake_registry,
+    name,
+    value,
+):
+    monkeypatch.setenv("TALKIES_MODELS_FILE", str(fake_registry))
+    monkeypatch.setenv(name, value)
+    sys.modules.pop("talkies.config", None)
+    with pytest.raises(ValueError, match=name):
+        importlib.import_module("talkies.config")
+
+
+def test_stream_limits_accept_documented_values(monkeypatch, fake_registry):
+    cfg = _reload_config(
+        monkeypatch,
+        fake_registry,
+        TALKIES_STREAM_MAX_CONNECTIONS="8",
+        TALKIES_STREAM_MAX_FRAME_BYTES="32768",
+        TALKIES_STREAM_MAX_BUFFER_SECONDS="2.5",
+        TALKIES_STREAM_IDLE_TIMEOUT="45s",
+        TALKIES_STREAM_MAX_DURATION="2h",
+    )
+    assert cfg.STREAM_MAX_CONNECTIONS == 8
+    assert cfg.STREAM_MAX_FRAME_BYTES == 32768
+    assert cfg.STREAM_MAX_BUFFER_SECONDS == 2.5
+    assert cfg.STREAM_IDLE_TIMEOUT_SECONDS == 45.0
+    assert cfg.STREAM_MAX_DURATION_SECONDS == 7200.0
+
+
+def test_stream_buffer_must_hold_one_maximum_frame(monkeypatch, fake_registry):
+    monkeypatch.setenv("TALKIES_MODELS_FILE", str(fake_registry))
+    monkeypatch.setenv("TALKIES_STREAM_MAX_FRAME_BYTES", "65536")
+    monkeypatch.setenv("TALKIES_STREAM_MAX_BUFFER_SECONDS", "0.1")
+    sys.modules.pop("talkies.config", None)
+    with pytest.raises(ValueError, match="must hold at least one"):
+        importlib.import_module("talkies.config")

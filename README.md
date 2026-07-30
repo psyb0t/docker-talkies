@@ -5,7 +5,30 @@
 [![license](https://raw.githubusercontent.com/psyb0t/docker-talkies/badges/license.svg)](LICENSE)
 [![Docker Pulls](https://img.shields.io/docker/pulls/psyb0t/talkies?style=flat-square)](https://hub.docker.com/r/psyb0t/talkies)
 
-> **Self-hosted, OpenAI-compatible speech server.** 7 ASR backends, 2 TTS engines, voice cloning, MCP — one Docker container, one wire format.
+> **Self-hosted, OpenAI-compatible speech server.** Seven ASR model slugs, seven TTS model slugs, voice cloning, MCP — one Docker container, one wire format.
+
+## Contents
+
+- [Quick start](#quick-start)
+- [How it works](#how-it-works)
+- [Supported models](#supported-models)
+- [What's NOT supported](#whats-not-supported)
+- [Transcription API](#api--post-v1audiotranscriptions)
+- [Live streaming ASR](#api--ws-v1audiotranscriptionsstream)
+- [TTS API](#api--post-v1audiospeech-tts)
+- [Resource management](#resource-management-endpoints-ollama-style)
+- [File staging](#server-side-file-staging-v1files)
+- [MCP endpoint](#mcp-endpoint-v1mcp)
+- [Agent integrations](#agent-integrations)
+- [Bearer-token auth](#bearer-token-auth)
+- [Configuration](#configuration-env-vars)
+- [CPU vs CUDA images](#cpu-vs-cuda-images)
+- [Architecture](#architecture)
+- [Customizing the model registry](#customizing-the-model-registry)
+- [Development](#development)
+- [Security notes](#security-notes)
+- [Credits](#credits)
+- [License](#license)
 
 ```python
 # Drop-in: point your existing OpenAI client at it, change the slug.
@@ -18,12 +41,13 @@ c.audio.speech.create(model="qwen3-tts-0.6b", voice="alloy", input="hello").stre
 
 The same client you use against `api.openai.com` works here — only the base URL and the slug change. That's the entire story.
 
-- **6 ASR backends** — Whisper (v3 / turbo), Parakeet-TDT, Canary-180M-Flash / 1B-Flash / Canary-Qwen-2.5B. Whisper-shape response across all of them; long files get sliced via Silero VAD and stitched back.
-- **2 TTS engines, 3 backends** — Kokoro-82M (~41 voices across en/es/fr/hi/it/pt, sub-second on CPU) shipped in two flavors (`kokoro-82m` PyTorch and `kokoro-82m-nvidia` ONNX-via-ORT — NVIDIA's TensorRT-friendly export), plus Qwen3-TTS-0.6B (CUDA-only voice cloning).
+- **Seven ASR model slugs across three runtime families** — Whisper (v3 / turbo), Parakeet-TDT, Canary-180M-Flash / 1B-Flash / Canary-Qwen-2.5B, and Nemotron-3.5-ASR. Whisper-shape response across all of them; long files get sliced via Silero VAD and stitched back.
+- **Seven TTS model slugs across three runtime families** — Kokoro-82M (~41 voices across en/es/fr/hi/it/pt, sub-second on CPU) ships in two flavors (`kokoro-82m` PyTorch and `kokoro-82m-nvidia` ONNX-via-ORT — NVIDIA's TensorRT-friendly export); five CUDA-only Qwen3-TTS variants add voice cloning and voice design.
 - **Voice cloning** — drop a 10-30 s reference `.wav` into `/data/custom-voices/<name>.wav`, synth as `voice=<name>`. Nested paths preserved (`clients/acme/jane.wav` → `voice=clients/acme/jane`). Live re-scan, no restart.
 - **Hot model swap + idle eviction** — one GPU pool serves both modalities, Ollama-style `/api/ps` for introspection, `DELETE /api/ps/<slug>` to evict.
 - **MCP server built in** at `/v1/mcp` — Claude / Cursor / IDE-side LLMs can call transcribe + speak as tools.
 - **Stereo diarization** without bolting on a separate model — left channel = speaker L, right = speaker R, chronological `L:` / `R:` turn lines.
+- **Live ASR over WebSocket** — stream 16 kHz mono PCM to `/v1/audio/transcriptions/stream` and receive revisioned partial, endpoint, and final transcripts. Native sessions are available through parakeet.cpp, Sherpa-ONNX, and Vosk; faster-whisper uses a bounded rolling window.
 - **CPU + CUDA images** — `psyb0t/talkies:latest` (CPU + Kokoro × 2 runtimes + 4 ASR models incl. multilingual Nemotron-3.5-ASR via parakeet.cpp) and `:latest-cuda` (everything, ~11 GB VRAM at full load).
 
 ## Quick start
@@ -35,21 +59,21 @@ docker run -d --name talkies \
   psyb0t/talkies:latest
 
 curl -s http://localhost:8000/v1/audio/transcriptions \
-  -F "file=@samples/hello.wav" \
+  -F "file=@/path/to/clip.wav" \
   -F "model=whisper-large-v3-turbo" | jq
 ```
 
-First boot downloads every model in `models.json` into `/data/models/<slug>/` (75 MB-3 GB each — bind-mount `/data` so they survive restarts). The CUDA image's full default set is ~30 GB on disk (the 5 Qwen3-TTS variants alone are ~24 GB). **Use `TALKIES_ENABLED_MODELS` to opt in to only what you actually need** — it whitelists slugs and the prefetch loop only downloads those, and the server only registers those backends:
+First boot downloads every model in the image's bundled registry into `/data/models/<slug>/` (75 MB-3 GB each — bind-mount `/data` so they survive restarts). The CPU image uses `models-cpu.json`; the CUDA image uses `models.json`. **Use `TALKIES_ENABLED_MODELS` to opt in to only what you actually need** — it whitelists slugs and the prefetch loop only downloads those, and the server only registers those backends:
 
 ```bash
-# Only one ASR + one TTS — ~5 GB on disk instead of ~30 GB
+# Only one ASR and one TTS model
 docker run -d --gpus all \
   -e TALKIES_ENABLED_MODELS=whisper-large-v3-turbo,qwen3-tts-1.7b-custom \
   -v $HOME/talkies-data:/data \
   -p 8000:8000 psyb0t/talkies:latest-cuda
 ```
 
-Unknown slug in the list → fail-fast at startup with the catalog listed. Empty / unset → every model in `models.json` gets downloaded (the default).
+Unknown slug in the list → fail-fast at startup with the catalog listed. Empty / unset → every model in the selected image's registry gets downloaded (the default).
 
 GPU: pull `psyb0t/talkies:latest-cuda` and add `--gpus all`.
 
@@ -59,7 +83,7 @@ GPU: pull `psyb0t/talkies:latest-cuda` and add `--gpus all`.
 ```bash
 # Verbose JSON — full Whisper shape with per-segment + per-word timestamps.
 curl -s http://localhost:8000/v1/audio/transcriptions \
-  -F "file=@samples/hello.wav" \
+  -F "file=@/path/to/clip.wav" \
   -F "model=whisper-large-v3-turbo" \
   -F "response_format=verbose_json" \
   -F "timestamp_granularities[]=word" \
@@ -67,13 +91,13 @@ curl -s http://localhost:8000/v1/audio/transcriptions \
 
 # SRT subtitle output (drop straight into a video player).
 curl -s http://localhost:8000/v1/audio/transcriptions \
-  -F "file=@samples/lecture.mp3" \
+  -F "file=@/path/to/lecture.mp3" \
   -F "model=whisper-large-v3" \
   -F "response_format=srt" > lecture.srt
 
 # Stereo diarization — left/right channels become speakers L/R.
 curl -s http://localhost:8000/v1/audio/transcriptions \
-  -F "file=@samples/interview-stereo.wav" \
+  -F "file=@/path/to/interview-stereo.wav" \
   -F "model=whisper-large-v3-turbo" \
   -F "diarization=true" \
   -F "response_format=verbose_json" | jq
@@ -94,53 +118,13 @@ curl -s -X POST  http://localhost:8000/unload | jq    # evict everything
 
 </details>
 
-<details>
-<summary><b>Table of contents</b></summary>
-
-- [Quick start](#quick-start)
-- [How it works](#how-it-works)
-- [Supported models](#supported-models)
-- [What's NOT supported](#whats-not-supported)
-- [API — `POST /v1/audio/transcriptions`](#api--post-v1audiotranscriptions)
-  - [Request fields](#request-fields)
-  - [Response formats](#response-formats)
-    - [`json` (default)](#json-default)
-    - [`verbose_json`](#verbose_json)
-    - [`text`](#text)
-    - [`srt`](#srt)
-    - [`vtt`](#vtt)
-  - [Stereo diarization](#stereo-diarization)
-  - [Translation (Canary X→Y)](#translation-canary-xy)
-  - [Long files + VAD chunking](#long-files--vad-chunking)
-  - [Error contract](#error-contract)
-- [API — `POST /v1/audio/speech` (TTS)](#api--post-v1audiospeech-tts)
-  - [Request body](#request-body)
-  - [Voices (`GET /v1/audio/voices`)](#voices-get-v1audiovoices)
-  - [Output formats](#output-formats)
-  - [Error contract (TTS)](#error-contract-tts)
-- [Resource-management endpoints (Ollama-style)](#resource-management-endpoints-ollama-style)
-- [Server-side file staging (`/v1/files`)](#server-side-file-staging-v1files)
-- [MCP endpoint (`/v1/mcp`)](#mcp-endpoint-v1mcp)
-- [Agent integrations](#agent-integrations)
-- [Bearer-token auth](#bearer-token-auth)
-- [Configuration (env vars)](#configuration-env-vars)
-- [CPU vs CUDA images](#cpu-vs-cuda-images)
-- [Architecture](#architecture)
-- [Customizing the model registry](#customizing-the-model-registry)
-- [Development](#development)
-- [Security notes](#security-notes)
-- [Credits](#credits)
-- [License](#license)
-
-</details>
-
 ## How it works
 
 `POST /v1/audio/transcriptions` with a multipart `file` + a `model` slug → text back. `POST /v1/audio/speech` with a JSON body (`model` + `input` + `voice`) → audio bytes back. Same wire shape as OpenAI for both.
 
-Swap the ASR slug — `whisper-large-v3`, `whisper-large-v3-turbo`, `parakeet-tdt-0.6b-v3`, `canary-180m-flash`, `canary-1b-flash`, `canary-qwen-2.5b` — and the transcription contract stays identical. Behind the scenes the request is dispatched to the right backend (faster-whisper for the whisper family, NeMo for everything else), audio is normalized to 16 kHz mono WAV, long files are sliced via Silero VAD into ≤28-second speech regions, results are stitched back into one Whisper-shape timeline. None of that leaks into the wire shape. You just get text.
+Swap the ASR slug — `whisper-large-v3`, `whisper-large-v3-turbo`, `parakeet-tdt-0.6b-v3`, `canary-180m-flash`, `canary-1b-flash`, `canary-qwen-2.5b`, or `nemotron-3.5-asr-0.6b` — and the transcription contract stays identical. Behind the scenes the request is dispatched to the right backend (faster-whisper, NeMo, or parakeet.cpp), audio is normalized to 16 kHz mono WAV, long files are sliced via Silero VAD into ≤28-second speech regions, results are stitched back into one Whisper-shape timeline. None of that leaks into the wire shape. You just get text.
 
-For TTS there are three slugs:
+For TTS there are seven slugs: two Kokoro variants and five Qwen3-TTS variants.
 
 - `kokoro-82m` (Kokoro-82M, Apache 2.0, ~41 voices across en/es/fr/hi/it/pt) — the fast in-process PyTorch pipeline (via the `kokoro` PyPI lib + `misaki` G2P). Sub-second synthesis on CPU and trivial on GPU.
 - `kokoro-82m-nvidia` (nvidia/kokoro-82M-onnx-opt, Apache 2.0, same voice catalog) — same Kokoro weights served via ONNXRuntime against NVIDIA's TensorRT-friendly ONNX export. No PyTorch on the hot path; CUDA EP on the CUDA image, CPU EP on the CPU image. G2P via `espeak-ng` + `phonemizer` (no `misaki` dep). Drop-in for `kokoro-82m` — same `voice` names, same wire format, same defaults.
@@ -150,11 +134,11 @@ Pass `model=<slug>`, an `input` string, and a `voice` from `GET /v1/audio/voices
 
 Need stereo speaker diarization on transcription? Pass `diarization=true` and upload a stereo file — left channel = speaker L, right channel = speaker R, output gets per-segment `channel` tags and the text is split into chronological `L:` / `R:` turn lines. Two-mic setups (interview rigs, podcast splits, dual-track ham recordings) end up with a clean transcript without you having to bolt a separate diarization model onto your stack.
 
-GPU variant (`psyb0t/talkies:latest-cuda` + `--gpus all`) ships everything; the CPU image (`psyb0t/talkies:latest`) ships the four ASR models that actually run reasonably without a GPU (the three Whisper variants + `canary-180m-flash`) plus Kokoro TTS. Parakeet-TDT, Canary-1B-Flash, Canary-Qwen-2.5B, and Qwen3-TTS need VRAM to be anything other than a space heater, so they're CUDA-only. Kokoro is fast enough on CPU that it ships in both images.
+GPU variant (`psyb0t/talkies:latest-cuda` + `--gpus all`) ships everything; the CPU image (`psyb0t/talkies:latest`) ships four ASR models that run reasonably without a GPU (two Whisper variants, `canary-180m-flash`, and `nemotron-3.5-asr-0.6b`) plus two Kokoro runtimes. Parakeet-TDT, Canary-1B-Flash, Canary-Qwen-2.5B, and Qwen3-TTS need VRAM to be anything other than a space heater, so they're CUDA-only. Kokoro is fast enough on CPU that it ships in both images.
 
 ## Supported models
 
-Eight ASR models + seven TTS slugs (engine mix: faster-whisper × 2, NeMo (Parakeet TDT + 3× Canary), parakeet.cpp/ggml × 1, Kokoro × 2 runtimes, Qwen3-TTS × 5 model variants), all publicly available with permissive licenses. They split into six engine families:
+Seven ASR models + seven TTS slugs (engine mix: faster-whisper × 2, NeMo (Parakeet TDT + 3× Canary), parakeet.cpp/ggml × 1, Kokoro × 2 runtimes, Qwen3-TTS × 5 model variants), all publicly available with permissive licenses. They split into five runtime families:
 
 ### ASR (`POST /v1/audio/transcriptions`)
 
@@ -237,7 +221,7 @@ A short list of things that look like they might work but don't, so you don't wa
 
 | Thing | Status | Notes |
 |---|---|---|
-| **Streaming / partial results** | Not supported | The endpoint is request/response. The whole file is buffered, normalized, transcribed, and the full response is returned. No SSE, no websockets, no chunked streaming output. |
+| **Partial results from `POST /v1/audio/transcriptions`** | Not supported | The OpenAI-compatible upload endpoint remains request/response. Use `WS /v1/audio/transcriptions/stream` for live PCM and revisioned partial results. |
 | **`prompt` request field** | Accepted, ignored | Present in the form schema for OpenAI compatibility. It's not threaded into any backend. |
 | **`temperature` request field** | Accepted, ignored | Same — present for compatibility, not used. |
 | **Mono file + `diarization=true`** | 400 error | Diarization requires a 2-channel input. Mono uploads get rejected with `NotStereoError`. |
@@ -249,7 +233,7 @@ A short list of things that look like they might work but don't, so you don't wa
 | **Files > 100 MB** | 413 error by default | Configurable via `TALKIES_MAX_UPLOAD_BYTES`. Bump it for long lectures / podcasts. |
 | **Custom Canary prompts** | Not supported | NeMo's Canary prompt format (`<\|spltoken\|>`, source/target tokens) isn't exposed to callers. You get the prompt the backend builds from `source_lang`/`target_lang`/`task`. |
 | **Speaker identification beyond stereo channels** | Not supported | There's no voice clustering / speaker-embedding model in here. "Diarization" means "two-channel split", not "figure out who's talking from the audio". |
-| **Real-time / live mic input** | Out of scope | Send a file. If you need live transcription, buffer a few seconds client-side and POST chunks. |
+| **Compressed live-mic frames** | Not supported | The WebSocket endpoint accepts raw signed 16-bit little-endian PCM only: 16 kHz, mono, with no WAV header. Decode or resample Opus/WebM/etc. on the client before sending frames. |
 | **OpenAI-compatible translation endpoint (`/v1/audio/translations`)** | Not implemented | OpenAI's separate `/v1/audio/translations` (always-translate-to-English) isn't exposed. Use a Canary slug with `default_task=s2t_translation` instead. |
 | **OpenAI voice aliases for Kokoro (`alloy`, `echo`, `fable`, `onyx`, `nova`, `shimmer`)** | 400 | Kokoro exposes its native voice names only. (Note: `alloy` / `echo` / `fable` exist as `qwen3-tts-0.6b` voices — different model, different catalog. They're not aliases for Kokoro voices.) Discover voices via `GET /v1/audio/voices`. Map client-side if your stack hard-codes the OpenAI names against Kokoro. |
 | **Japanese (`j*`) and Chinese (`z*`) Kokoro voices** | Filtered out | Those voices need the optional `misaki[ja]` / `misaki[zh]` extras, which pull large MeCab / pypinyin chains. The voice catalog only exposes the 40 voices whose lang codes work with the lightweight `espeak-ng`-based G2P shipped in the image. Same filter applies to `kokoro-82m-nvidia` — the NVIDIA snapshot ships zh-specific lexicons + FSTs that would unlock those voices, but the bundled frontend isn't yet wired into the backend. (Qwen3-TTS does support Japanese / Chinese / Korean — pick a Qwen3 slug instead.) |
@@ -267,7 +251,7 @@ A short list of things that look like they might work but don't, so you don't wa
 | **Bit-identical re-synth on `voice_design`** | Not guaranteed | Two calls with the same `instructions` produce two different voices — sampling is stochastic. Repeat-stability isn't a goal of the upstream model. |
 | **Nemotron-3.5-ASR `task=s2t_translation`** | 400 | parakeet.cpp does ASR only — no translation head. Use a Canary slug if you need X→en / en→X. |
 | **Nemotron-3.5-ASR per-token confidence in verbose_json with `language=<locale>`** | Stripped | The C-API has a JSON-output path AND a language-pinned path but no combined "lang + JSON" entry point (yet). When `language=` is set we use the lang-pinned path, which returns plain text only — `words` and `segments` come back empty. Send `language=auto` (or omit) to get full per-word timestamps + synthesized segments. |
-| **Nemotron-3.5-ASR streaming HTTP body** | Not supported via API | parakeet.cpp's C-API exposes a streaming session (`parakeet_capi_stream_*`), but talkies doesn't wire it to `/v1/audio/transcriptions` yet — the route always returns the full transcription in one body. The PCM-streaming work is on `/v1/audio/speech` (TTS). |
+| **Nemotron streaming through the upload endpoint** | Not supported | Native parakeet.cpp streaming is exposed through `WS /v1/audio/transcriptions/stream`; `POST /v1/audio/transcriptions` still returns one complete response body. |
 | **Parakeet TDT / RNNT / hybrid checkpoints via `parakeet_cpp`** | Not registered (out of the box) | The `parakeet_cpp` executor supports every Parakeet GGUF in `mudler/parakeet-cpp-gguf`, but the shipped `models.json` only registers the Nemotron-3.5 streaming variant. Drop a custom `models.json` (or override the file) to add e.g. `parakeet-tdt_ctc-110m` (English, 110M, very fast on CPU) as a `parakeet_cpp` slug with the matching `gguf_file`. |
 
 ## API — `POST /v1/audio/transcriptions`
@@ -444,7 +428,7 @@ Then call it normally:
 
 ```bash
 curl -s http://localhost:8000/v1/audio/transcriptions \
-  -F "file=@samples/german-clip.wav" \
+  -F "file=@/path/to/german-clip.wav" \
   -F "model=canary-1b-flash-de2en" | jq
 ```
 
@@ -498,6 +482,47 @@ Two response shapes — application errors return `{"detail": "..."}` with a hum
 | 500 | string | unhandled backend exception (NeMo / faster-whisper / torch internal failure) |
 
 Auth: set `TALKIES_AUTH_TOKEN` to require a bearer token on every route (see [Bearer-token auth](#bearer-token-auth)). Without it, every endpoint is open — stick the container behind a reverse proxy (Caddy, Traefik, nginx, your VPN's auth gateway) if you don't want the built-in token. There's no built-in rate limiting either; that's a reverse-proxy concern.
+
+## API — `WS /v1/audio/transcriptions/stream`
+
+This talkies-specific WebSocket endpoint accepts live raw PCM and emits JSON transcript updates. It is not part of the OpenAI API. Connect to `ws://<host>:8000/v1/audio/transcriptions/stream` (or `wss://` behind TLS), then:
+
+1. Send one JSON `start` message.
+2. Wait for `ready`.
+3. Send binary PCM frames in order.
+4. Send `{"type":"end"}` to flush the decoder, or `{"type":"cancel"}` to discard the session.
+
+The required start shape is:
+
+```json
+{
+  "type": "start",
+  "model": "nemotron-3.5-asr-0.6b",
+  "encoding": "pcm_s16le",
+  "sample_rate": 16000,
+  "channels": 1,
+  "language": "auto",
+  "interim_results": true,
+  "word_timestamps": true
+}
+```
+
+`type`, `model`, `encoding`, `sample_rate`, and `channels` are required. `language` defaults to the backend's automatic/default behavior, `interim_results` defaults to `true`, and `word_timestamps` defaults to `false`. JSON start/control messages are capped at 4096 UTF-8 bytes; unknown or duplicate fields and unsupported audio parameters are rejected. Each binary message must be a non-empty, even-length block of headerless PCM16LE; frame boundaries do not need to align with words or silence. The bundled server admits at most one pending WebSocket message per connection, so a slow decoder applies transport backpressure instead of growing an application queue.
+
+Server events are JSON objects:
+
+| Event | Meaning |
+|---|---|
+| `ready` | The model session is open; echoes `model`, `encoding`, `sample_rate`, and `channels`. |
+| `partial` | Revisable transcript hypothesis. Suppressed when `interim_results=false`. |
+| `endpoint` | A backend detected an utterance boundary. It is stable for that utterance but does not close the WebSocket. |
+| `final` | Final decoder flush after `end`; always has `is_final=true`. |
+| `stats` | Terminal accounting: `audio_seconds`, binary `frames`, and `canceled`. |
+| `error` | Protocol/resource/backend failure with stable `code` and human-readable `detail`; the server then closes the socket. |
+
+Transcript events contain `revision`, `text`, `words`, `audio_seconds`, and `is_final`. Revisions increase within a session. `words` is empty unless requested and supported by the backend. On `end`, the normal sequence is `final` → `stats` → close code 1000. On `cancel`, no final transcript is produced: the server sends `stats` with `canceled=true` and closes with 1000. A dropped connection also cancels and releases the session.
+
+When `TALKIES_AUTH_TOKEN` is set, pass `Authorization: Bearer <token>` in the WebSocket upgrade headers. Missing or invalid credentials are rejected with close code 4401 before the application accepts the socket. See [streaming.md](streaming.md#live-asr-over-websocket) for a Python microphone/file client, close codes, backend behavior, and custom Sherpa/Vosk registry entries.
 
 ## API — `POST /v1/audio/speech` (TTS)
 
@@ -719,12 +744,14 @@ talkies mirrors a subset of [speaches](https://github.com/speaches-ai/speaches) 
 | `GET /healthz` | Unauthenticated liveness. Returns `{ok, device, models}` where `models` is the configured slug list. |
 | `GET /v1/models` | OpenAI-style model list. `{"object": "list", "data": [{"id": slug, "modality": "asr"\|"tts", ...}]}`. The `modality` field is talkies-specific so clients can filter ASR vs TTS slugs. |
 | `GET /api/ps` | Currently-loaded models, with per-model `idle_seconds` (seconds since last use). |
-| `DELETE /api/ps/{model_id}` | Evict one model from RAM/VRAM. `model_id` can be URL-encoded (`whisper%2Flarge` → `whisper/large`) — LiteLLM's resource manager does this on slashes. Returns 404 if not loaded. |
-| `POST /unload` | Evict every loaded model. Returns the list that was actually unloaded. |
+| `DELETE /api/ps/{model_id}` | Evict one model from RAM/VRAM. `model_id` can be URL-encoded (`whisper%2Flarge` → `whisper/large`) — LiteLLM's resource manager does this on slashes. Returns 404 if not loaded and 409 while that model has active streaming sessions. |
+| `POST /unload` | Evict every loaded model. Returns the list that was actually unloaded; returns 409 while any streaming session is active. |
 
 Behind these endpoints there's an **idle sweeper** that runs on a `TALKIES_SWEEPER_INTERVAL` cadence (default 60s) and unloads any backend that hasn't been called in `TALKIES_MODEL_TTL` seconds (default 600s = 10min). Set `TALKIES_MODEL_TTL=0` to disable auto-unload entirely.
 
 There's also **sibling eviction at request time**: when a transcription or speech request arrives and a model that isn't the requested one is currently loaded, the other model gets unloaded first — regardless of modality. ASR and TTS share the same pool; loading Kokoro evicts a resident Whisper and vice versa. All models compete for the same VRAM (or the same fat slice of RAM on CPU), so loading two at once on a 12GB card OOMs you. Ollama does this implicitly via its scheduler; we do it explicitly per-request. If you genuinely want two models resident simultaneously, you want two containers.
+
+An active WebSocket pins its model. More than one stream may share that same loaded model, up to `TALKIES_STREAM_MAX_CONNECTIONS`, but a request or stream that would switch to another model gets 409/`model_busy`. The idle sweeper skips pinned models. End, cancel, disconnect, idle timeout, and protocol errors all release the pin.
 
 ## Server-side file staging (`/v1/files`)
 
@@ -862,7 +889,7 @@ Then set `TALKIES_URL` (and `TALKIES_AUTH_TOKEN` if the server requires one).
 
 ## Bearer-token auth
 
-Set `TALKIES_AUTH_TOKEN` to gate every route — `/v1/audio/transcriptions`, `/v1/files/*`, `/v1/mcp`, the resource-management endpoints. Requests without `Authorization: Bearer <token>` get 401 with `WWW-Authenticate: Bearer`. `/healthz` and CORS preflights (`OPTIONS`) are exempt so probes + browser clients keep working.
+Set `TALKIES_AUTH_TOKEN` to gate every route — `/v1/audio/transcriptions`, its streaming WebSocket, `/v1/files/*`, `/v1/mcp`, and the resource-management endpoints. HTTP requests without `Authorization: Bearer <token>` get 401 with `WWW-Authenticate: Bearer`; unauthorized WebSocket upgrades close with 4401. `/healthz` and CORS preflights (`OPTIONS`) are exempt so probes + browser clients keep working.
 
 ```bash
 # Server side:
@@ -879,7 +906,7 @@ If you don't set the env var (or set it to an empty string), talkies stays wide 
 
 | Var | Default | What it does |
 |---|---|---|
-| `TALKIES_AUTH_TOKEN` | (empty = no auth) | Bearer token required on every route except `/healthz`. Unset / empty leaves the server wide open (existing behaviour). When set, every HTTP request and every MCP call must include `Authorization: Bearer <token>` or it returns 401. |
+| `TALKIES_AUTH_TOKEN` | (empty = no auth) | Bearer token required on every route except `/healthz`. Unset / empty leaves the server wide open (existing behaviour). When set, HTTP/MCP requests without the header return 401 and unauthorized WebSocket upgrades close with 4401. |
 | `TALKIES_LOG_LEVEL` (or `LOG_LEVEL`) | `info` | Log verbosity, case-insensitive: `debug` / `info` / `warn` / `error` / `fatal` (`warning` / `critical` also accepted). An unrecognized value fails fast at startup. **`debug` logs FULL request + response bodies** — TTS `input` text and `instructions`, cloned-voice reference transcripts, and ASR transcripts — as structured JSON at the HTTP boundary. That's PII: a one-time `WARNING` fires at startup when `debug` is active, and you own the exposure (route logs somewhere private, never ship `debug` to production). `info` and above never log body content. `TALKIES_LOG_LEVEL` wins over `LOG_LEVEL` when both are set. |
 | `TALKIES_DEVICE` | `auto` (in entrypoint) / `cpu` / `cuda` (per-image default) | `auto` picks `cuda` if available else `cpu`. Pin to a specific GPU with `cuda:N`. |
 | `TALKIES_MODELS_FILE` | `/app/models.json` | Path to the model registry JSON. Override to ship a custom subset (e.g. only Whisper-turbo if you only care about that one model). |
@@ -890,8 +917,13 @@ If you don't set the env var (or set it to an empty string), talkies stays wide 
 | `TALKIES_MAX_UPLOAD_BYTES` | `104857600` (100 MB) | Reject uploads larger than this with 413. Bump for long lectures / podcasts. Applies to `POST /v1/audio/transcriptions` (`file` field) and `PUT /v1/files/{path}` only. |
 | `TALKIES_MAX_DOWNLOAD_BYTES` | `1073741824` (1 GiB) | Abort URL downloads (when `file_path` is an http(s) URL) larger than this. Bigger default than the upload cap because downloads stream straight to disk, no in-memory buffering. |
 | `TALKIES_BLOCK_PRIVATE_DOWNLOADS` | `false` | Set to `true` to refuse URL downloads whose hostname resolves to private / loopback / link-local / multicast / reserved IPs. Default `false` because the typical self-hosted deployment is a LAN box fetching from another LAN box. Flip to `true` if the server's exposed to untrusted clients. |
-| `TALKIES_ENABLED_MODELS` | (empty = all from models.json) | Comma-separated slugs whitelist. Restricts both the boot-time snapshot download and the queryable surface of `/v1/models`. Unknown slugs fail fast on startup. Leave empty to enable every model in `models.json` (heavy on first boot — the CUDA image's full set is ~12 GB on disk). |
-| `TALKIES_PRELOAD` | (empty) | Comma-separated slugs to load into RAM/VRAM at boot, before uvicorn accepts requests. Skips the cold-load penalty on the first transcription. Must be a subset of `TALKIES_ENABLED_MODELS` (or any slug from `models.json` when that's empty). |
+| `TALKIES_ENABLED_MODELS` | (empty = all registry slugs) | Comma-separated slugs whitelist. Restricts both the boot-time snapshot download and the queryable surface of `/v1/models`. Unknown slugs fail fast on startup. Leave empty to enable every model in the selected image's bundled registry; the CUDA registry has the broadest catalog and can take substantial disk space on first boot. |
+| `TALKIES_PRELOAD` | (empty) | Comma-separated slugs to load into RAM/VRAM at boot, before uvicorn accepts requests. Skips the cold-load penalty on the first transcription. Must be a subset of `TALKIES_ENABLED_MODELS` (or any slug from the active registry when that's empty). |
+| `TALKIES_STREAM_MAX_CONNECTIONS` | `4` | Maximum active ASR WebSockets per container. Valid range: 1–1024. Streams may share one model; simultaneous streams for different models are rejected. |
+| `TALKIES_STREAM_MAX_FRAME_BYTES` | `65536` | Maximum bytes in one binary PCM frame. Must be 2–16777216 and each frame must contain complete 16-bit samples. |
+| `TALKIES_STREAM_MAX_BUFFER_SECONDS` | `5` | Bounded per-session PCM/rolling-window budget in seconds. Valid range: 0.1–300 and must hold at least one configured maximum-size frame. For faster-whisper this is the re-decoded rolling window. |
+| `TALKIES_STREAM_IDLE_TIMEOUT` | `30s` | Maximum wait between the start/control/audio messages before close code 4408. Valid range: 1s–1h; accepts bare seconds or Go-style durations. |
+| `TALKIES_STREAM_MAX_DURATION` | `4h` | Maximum accepted audio duration per connection. Valid range: 1s–24h; accepts bare seconds or Go-style durations. |
 | `TALKIES_VAD_CHUNK_THRESHOLD` | `30.0` | Audio longer than this (seconds) goes through VAD chunking. Shorter clips are sent to the backend whole. |
 | `TALKIES_VAD_MAX_SPEECH` | `28.0` | Max length of a single VAD-detected speech region (seconds). Anything longer gets split. Should stay under Whisper's 30s internal window. |
 | `TALKIES_VAD_MIN_SILENCE_MS` | `500` | Silero VAD param — minimum gap (ms) to consider a region break. |
@@ -904,7 +936,7 @@ If you don't set the env var (or set it to an empty string), talkies stays wide 
 | Image | Tag | Platforms | Models served | Image size (approx) |
 |---|---|---|---|---|
 | CPU | `psyb0t/talkies:latest` | `linux/amd64` | 2× Whisper, 1× Canary-180m-Flash, Nemotron-3.5-ASR-0.6B (parakeet.cpp), Kokoro-82M ×2 runtimes | ~3 GB |
-| CUDA | `psyb0t/talkies:latest-cuda` | `linux/amd64` | all eight ASR + Kokoro-82M (×2 runtimes) + Qwen3-TTS (all 5 mode variants — Base 0.6B/1.7B, CustomVoice 0.6B/1.7B, VoiceDesign 1.7B) | ~12 GB |
+| CUDA | `psyb0t/talkies:latest-cuda` | `linux/amd64` | all seven ASR + Kokoro-82M (×2 runtimes) + Qwen3-TTS (all 5 mode variants — Base 0.6B/1.7B, CustomVoice 0.6B/1.7B, VoiceDesign 1.7B) | ~12 GB |
 
 Why split the model list? Whisper, the tiny Canary, and Nemotron-3.5-ASR via parakeet.cpp work fine on CPU. Parakeet-TDT, Canary-1B-Flash, Canary-Qwen-2.5B, and Qwen3-TTS-0.6B don't — Parakeet-TDT (NeMo path, not parakeet.cpp) is awkward on CPU because its decoder is autoregressive and slow without batched-attention kernels, Canary-1B and Canary-Qwen are flat-out too big to be useful in software-only inference, and Qwen3-TTS via `faster-qwen3-tts` captures CUDA graphs at load time (no CPU code path exists). Nemotron-3.5-ASR-0.6B via parakeet.cpp is the one model in the autoregressive-streaming class that runs well on CPU — the ggml C++ runtime is 1.5-2× faster than NeMo's PyTorch path there. The shipped parakeet.cpp build is CPU-only in both images (no `-DPARAKEET_GGML_CUDA` — wiring the CUDA backend requires a CUDA dev toolchain in the builder stage and per-arch nvcc compilation that bloats the build cost out of proportion to the speedup at the 0.6B scale). Rather than ship a CPU image that *technically* serves models nobody would use on CPU, the CPU image only lists what'll actually finish in a sane time. Kokoro-82M ships in both images — at 82M params it synthesizes faster than real-time on a 4-core CPU.
 
@@ -951,11 +983,13 @@ The CUDA image also runs on CPU if `--gpus all` isn't passed — it'll bind to C
 - **`talkies/vad.py`** — wraps Silero VAD. Returns merged speech regions capped at `TALKIES_VAD_MAX_SPEECH` seconds (regions longer than the cap get re-split at the longest silence inside).
 - **`talkies/tts.py`** — pipes Kokoro's raw 24 kHz mono int16 PCM through ffmpeg to produce the requested `response_format`. `pcm` short-circuits and returns the raw bytes verbatim.
 - **`talkies/models/`** — one module per engine family. Each implements the duck-typed `BackendBase` Protocol: `get_model()` (lazy load), `unload()` (free RAM/VRAM), `loaded()`, `last_used_secs_ago()`. ASR backends additionally implement `transcribe(...)` returning a `TranscribeResult`; TTS backends implement `synthesize(...)` returning a `SynthesisResult`, plus `voices()` / `default_voice()`.
-  - `whisper.py` — drives faster-whisper.
+  - `whisper.py` + `whisper_stream.py` — faster-whisper file inference plus bounded rolling-window pseudo-streaming.
   - `parakeet.py` — drives NeMo Parakeet-TDT.
   - `multitask.py` — drives Canary-180M-Flash + Canary-1B-Flash.
   - `salm.py` — drives Canary-Qwen-2.5B (SALM head with Qwen2 decoder).
   - `kokoro.py` — drives Kokoro-82M (one shared `KModel`, per-lang `KPipeline`; reads voice tensors directly off the snapshot dir so the runtime stays `HF_HUB_OFFLINE=1`).
+  - `parakeet_cpp.py`, `sherpa.py`, and `vosk.py` — native stateful streaming decoders; parakeet.cpp also implements file transcription.
+  - `asr_streaming.py` — strict WebSocket message validation, shared transcript events, PCM limits, revision/sample accounting, and bounded session state.
   - `base.py` — Protocols + result dataclasses (`TranscribeResult`, `SynthesisResult`).
   - `__init__.py` — `build_backends(registry, device)` factory + `is_asr_backend` / `is_tts_backend` duck-type guards.
 - **`talkies/config.py`** — env-driven config, parsed at import time. Bad input fails the container, doesn't ship a half-broken service.
@@ -1001,7 +1035,8 @@ Or point `TALKIES_MODELS_FILE` at a different path inside the container. The fil
 | Field | Required | Notes |
 |---|---|---|
 | `repo` | yes | HuggingFace repo id. talkies pulls via `snapshot_download(local_dir=$TALKIES_DATA_DIR/models/<slug>)` so each model lives as a flat directory keyed by its slug. |
-| `executor` | yes | One of `whisper`, `parakeet`, `parakeet_cpp`, `canary_multitask`, `canary_salm`, `kokoro`, `kokoro_nvidia`, `qwen3_tts`. Other values fail startup. |
+| `revision` | no | Immutable Hugging Face commit SHA to download. Pin production registries to a commit SHA so a later upstream default-branch change cannot silently change the weights. |
+| `executor` | yes | One of `whisper`, `parakeet`, `parakeet_cpp`, `sherpa`, `vosk`, `canary_multitask`, `canary_salm`, `kokoro`, `kokoro_nvidia`, `qwen3_tts`. Other values fail startup. Streaming is implemented by `whisper`, `parakeet_cpp`, `sherpa`, and `vosk`; the remaining ASR executors stay upload-only. |
 | `gguf_file` | no | `parakeet_cpp` executor only. Filename of the specific GGUF quant variant inside the HF repo (e.g. `nemotron-3.5-asr-streaming-0.6b-q8_0.gguf`). Required when the repo ships multiple GGUFs in one directory (the entrypoint's prefetch uses it as the `allow_patterns` filter so only that one file is downloaded — saves multi-GB of unused quant variants). Omit when the repo has one obvious GGUF and you want the alphabetical first. |
 | `modality` | no | `asr` (default) or `tts`. Used by `/v1/models` filtering and by the endpoint guards. The TTS executors (`kokoro` / `kokoro_nvidia` / `qwen3_tts`) imply `tts`; ASR executors imply `asr`. |
 | `default_source_lang` | no | ASR only. Used when the request omits `language`. |
@@ -1010,10 +1045,14 @@ Or point `TALKIES_MODELS_FILE` at a different path inside the container. The fil
 | `default_voice` | no | TTS only. Used when the request omits `voice`. Defaults to the first voice the backend reports. |
 | `default_language` | no | Qwen3-TTS only. Default spoken language for `custom_voice` / `voice_design` modes when the request omits `language`. Defaults to `English`. (Qwen3 `base` mode reads language from the voice's sibling `.lang` file.) |
 | `qwen3_mode` | no | `qwen3_tts` executor only. One of `base` (voice cloning — default), `custom_voice` (preset speakers), `voice_design` (NL voice description). Must match the upstream checkpoint's `tts_model_type` — a mismatch is logged at load time and synthesis follows the registry mode. |
+| `recognizer_factory` | no | `sherpa` only. `from_transducer` (default), `from_paraformer`, `from_wenet_ctc`, or `from_zipformer2_ctc`. |
+| `sherpa_config` | `sherpa` only | Non-empty object passed to the chosen Sherpa-ONNX `OnlineRecognizer` factory. Relative model-file values such as `tokens`, `encoder`, `decoder`, `joiner`, `model`, `lm_model`, and `hotwords_file` are resolved under the slug's downloaded snapshot. Provider and endpoint detection default from talkies unless overridden. |
 | `languages` | no | Informational only — listed in error messages, not enforced. |
 | `dependencies` | no | List of extra HuggingFace repo ids the executor needs at load time (e.g. `canary-qwen-2.5b` instantiates a Qwen3 tokenizer separately from its own snapshot). Each is `snapshot_download`'d at entrypoint time into the standard HF cache (`HF_HOME`) so `transformers`/`AutoTokenizer` find it offline. |
 
 Adding a new slug pointing at a new repo "just works" if the repo follows the same conventions as the executor expects (a faster-whisper CT2 dir for `whisper`, a NeMo `.nemo` checkpoint for `parakeet`/`canary_*`, a GGUF file for `parakeet_cpp` — set `gguf_file` to the specific quant name, a Kokoro-style `config.json` + `kokoro-v*.pth` + `voices/*.pt` layout for `kokoro`, a Qwen3-TTS HF repo with the matching `tts_model_type` for `qwen3_tts` — pair `qwen3_mode` accordingly). Adding a brand-new executor family means editing `talkies/models/__init__.py` to register the dispatch.
+
+The images include the `sherpa-onnx` Python package, its explicitly pinned `sherpa-onnx-core` native companion, and the `vosk` runtime, but the bundled model registries do not enable a Sherpa or Vosk slug. Add a compatible snapshot to a custom registry to activate one; complete examples and the required directory/config shapes are in [streaming.md](streaming.md#sherpa-onnx-and-vosk-models).
 
 A common reason to ship a custom `models.json`: enabling translation directions on Canary-1B-Flash. See [Translation](#translation-canary-xy).
 
@@ -1036,8 +1075,10 @@ make run             # build + run CPU image, /data persisted at ~/.talkies-data
 make run-cuda        # build + run CUDA image with --gpus all
 
 make test-integration  # CUDA integration suite — builds + boots talkies, hits the HTTP surface
+make test-streaming    # CPU-native real WebSocket test with the bundled Nemotron model
+make test-streaming-custom # real Sherpa-ONNX and Vosk WebSocket tests; downloads their pinned test models
 
-# Dependency management (bumps [tool.uv] exclude-newer to today first, then
+# Dependency management (uses a seven-day [tool.uv] exclude-newer gate, then
 # runs the uv operation inside the dev container — see "Security notes" below)
 make pkg-lock                 # refresh uv.lock honouring the current gate
 make pkg-add PKG=name[==ver]  # add a package
@@ -1050,7 +1091,9 @@ The dev image is intentionally light — it has the lightweight runtime deps (`f
 
 ### Unit tests (`make test`)
 
-Pure-python coverage of `talkies.config` — `TALKIES_ENABLED_MODELS` parsing + filtering, schema validation in `load_registry()`, env-var coercion (durations, device strings). No model loading, no HTTP, runs in sub-second inside the dev container.
+Offline unit coverage for configuration, the streaming protocol and WebSocket
+handler, bearer auth, model pinning, and each streaming adapter. Heavy model
+weights are stubbed, so the suite runs quickly inside the dev container.
 
 ### Integration tests (`make test-integration`)
 
@@ -1059,7 +1102,10 @@ CUDA-only end-to-end suite that builds `psyb0t/talkies:local-cuda`, spawns a fre
 - Endpoint smoke (`test_endpoints.sh`): `/healthz`, `/v1/models`, `/api/ps`, `/unload`, 404/422 paths.
 - Per-model transcription (`test_transcribe.sh`): every enabled model goes through `json`, `verbose_json`, `srt`, and `vtt` against a fixture audio file. Also asserts `/api/ps` reflects loads and that `DELETE /api/ps/<slug>` actually unloads.
 - Per-model speech (`test_speech.sh`): every TTS slug across all 6 output formats, voice catalog, error contract.
-- Focused per-engine e2e files (`e2e_*.sh`): `e2e_qwen3_modes.sh` (12 cases — all three Qwen3-TTS modes + sampling extras + voice cloning via mounted fixture), `e2e_kokoro_nvidia.sh` (kokoro-82m-nvidia ONNX path), `e2e_nemotron_asr.sh` (Nemotron-3.5-ASR via parakeet.cpp — listing, transcription round-trip, per-word + synthesized segment timestamps, explicit-language path, bad-locale guard).
+- Focused per-engine e2e files (`e2e_*.sh`): `e2e_qwen3_modes.sh` (12 cases — all three Qwen3-TTS modes + sampling extras + voice cloning via mounted fixture), `e2e_kokoro_nvidia.sh` (kokoro-82m-nvidia ONNX path), `e2e_nemotron_asr.sh` (Nemotron-3.5-ASR via parakeet.cpp — listing, transcription round-trip, per-word + synthesized segment timestamps, explicit-language path, bad-locale guard), and `e2e_streaming_asr.sh` (a CPU-capable real-stream test: converts the committed fixture to PCM, sends it through a real WebSocket, reconstructs the native finalized chunks, and requires `ready`, transcript output, `final`, `stats`, and the expected words).
+
+Run that CPU-native streaming test with `make test-streaming`; it builds the CPU
+image and exercises the committed fixture without a GPU.
 
 Drop a short clip (a few seconds is plenty) at `tests/integration/.fixtures/audio.<wav|mp3|m4a|flac|ogg>` — the harness picks it up automatically; the transcription tests skip if it's missing. The Qwen3 cloning and Nemotron-3.5 round-trip suites both rely on the canonical `tests/integration/.fixtures/audio.mp3` + `audio.mp3.txt` pair (transcript: "You are just a line of code.") that ships in-repo.
 
@@ -1099,7 +1145,7 @@ CPU isn't supported as a test target on purpose — whisper-large-v3 on a deskto
 - Every Python dependency is exactly pinned in the Dockerfiles. No floating constraints.
 - Base images pinned by `@sha256:...` digest (Python 3.12-slim-bookworm for CPU, nvidia/cuda:12.6.3-runtime-ubuntu24.04 for CUDA).
 - `uv` itself is COPY'd from `ghcr.io/astral-sh/uv:0.11.15` by digest.
-- `[tool.uv] exclude-newer` in `pyproject.toml` refuses to install package versions newer than the gate date — blocks same-day supply-chain attacks at lockfile generation time. Every `make pkg-*` dep mutation (`pkg-add`, `pkg-update`, `pkg-upgrade`, `pkg-remove`) bumps the gate to today's UTC midnight FIRST via `scripts/bump_exclude_newer.sh`, so the age window stays anchored to the moment of the change instead of silently drifting.
+- `[tool.uv] exclude-newer` in `pyproject.toml` refuses package versions newer than a seven-day gate. Every dependency mutation target moves that gate to UTC midnight seven days earlier via `scripts/bump_exclude_newer.sh`, so newly published packages remain ineligible while existing eligible pins can be refreshed.
 - Container runs as non-root user `talkies` (uid 1000). `/data` is the only writable mount target.
 - `HF_HUB_OFFLINE=1` is the production default — once weights are cached on disk, the container has no reason to call out to HuggingFace. The entrypoint's prefetch step transparently unsets this for the snapshot-download sub-shell only; the server process itself runs offline. So in steady state (after the first boot) talkies never reaches the internet.
 - Optional built-in bearer-token auth via `TALKIES_AUTH_TOKEN` (see [Bearer-token auth](#bearer-token-auth)). Default-off — set the env var to require `Authorization: Bearer <token>` on every route (HTTP API and MCP). The server binds to `0.0.0.0:8000` inside the container — control network exposure at `docker run` time (`-p 127.0.0.1:8000:8000` for loopback-only on the host, `-p 8000:8000` for all interfaces). For untrusted networks, combine the token with a reverse proxy doing TLS termination + rate limiting.

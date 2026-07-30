@@ -1,0 +1,23 @@
+{
+  "models": {
+    "sherpa-stream-test": {
+      "repo": "csukuangfj/sherpa-onnx-streaming-zipformer-en-2023-06-26",
+      "revision": "672fbf1b30579d6585301139bb363f42a0ad4a24",
+      "executor": "sherpa",
+      "recognizer_factory": "from_transducer",
+      "sherpa_config": {
+        "tokens": "tokens.txt",
+        "encoder": "encoder-epoch-99-avg-1-chunk-16-left-128.int8.onnx",
+        "decoder": "decoder-epoch-99-avg-1-chunk-16-left-128.int8.onnx",
+        "joiner": "joiner-epoch-99-avg-1-chunk-16-left-128.int8.onnx"
+      },
+      "languages": ["en"]
+    },
+    "vosk-stream-test": {
+      "repo": "aglaia-models/vosk-model-small-en-us-0.15",
+      "revision": "0aac829e440a7c8bd30f674a17d9a6d1dbdbbf3a",
+      "executor": "vosk",
+      "languages": ["en"]
+    }
+  }
+}

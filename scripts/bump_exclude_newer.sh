@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Bump [tool.uv] exclude-newer in pyproject.toml to today's UTC midnight.
+# Bump [tool.uv] exclude-newer to the UTC midnight seven days ago.
 # Called by Makefile pkg-* targets before any dependency mutation so the
-# supply-chain age gate is always anchored to the moment of the change.
+# supply-chain age gate excludes the newest seven-day attack window.
 set -euo pipefail
 
 PYPROJECT="${1:-pyproject.toml}"
-TODAY="$(date -u +%Y-%m-%dT00:00:00Z)"
+CUTOFF="$(date -u -d '7 days ago' +%Y-%m-%dT00:00:00Z)"
 
 if [ ! -f "$PYPROJECT" ]; then
     echo "bump_exclude_newer: $PYPROJECT not found" >&2
@@ -18,7 +18,7 @@ if ! grep -qE '^exclude-newer\s*=' "$PYPROJECT"; then
 fi
 
 tmp="$(mktemp)"
-sed -E "s|^(exclude-newer\s*=\s*).*|\1\"${TODAY}\"|" "$PYPROJECT" > "$tmp"
+sed -E "s|^(exclude-newer\s*=\s*).*|\1\"${CUTOFF}\"|" "$PYPROJECT" >"$tmp"
 mv "$tmp" "$PYPROJECT"
 
-echo "exclude-newer -> ${TODAY}"
+echo "exclude-newer -> ${CUTOFF}"

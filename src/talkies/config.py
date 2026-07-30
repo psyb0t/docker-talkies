@@ -28,6 +28,30 @@ def _float_env(name: str, default: float) -> float:
         raise ValueError(f"{name}={raw!r} is not a number") from exc
 
 
+def _bounded_int_env(
+    name: str,
+    default: int,
+    minimum: int,
+    maximum: int,
+) -> int:
+    value = _int_env(name, default)
+    if not minimum <= value <= maximum:
+        raise ValueError(f"{name}={value} must be between {minimum} and {maximum}")
+    return value
+
+
+def _bounded_float_env(
+    name: str,
+    default: float,
+    minimum: float,
+    maximum: float,
+) -> float:
+    value = _float_env(name, default)
+    if not minimum <= value <= maximum:
+        raise ValueError(f"{name}={value} must be between {minimum} and {maximum}")
+    return value
+
+
 def _list_env(name: str) -> list[str]:
     raw = os.environ.get(name, "")
     return [s.strip() for s in raw.split(",") if s.strip()]
@@ -62,6 +86,18 @@ def _duration_env(name: str, default: float) -> float:
     minutes = int(match.group(2) or 0)
     seconds = float(match.group(3) or 0)
     return hours * 3600 + minutes * 60 + seconds
+
+
+def _bounded_duration_env(
+    name: str,
+    default: float,
+    minimum: float,
+    maximum: float,
+) -> float:
+    value = _duration_env(name, default)
+    if not minimum <= value <= maximum:
+        raise ValueError(f"{name}={value} must be between {minimum}s and {maximum}s")
+    return value
 
 
 # Optional bearer token gating every HTTP route (including /v1/mcp).
@@ -116,6 +152,28 @@ MAX_UPLOAD_BYTES: int = _int_env("TALKIES_MAX_UPLOAD_BYTES", 100 * 1024 * 1024)
 # the upload cap — downloads stream to disk, no in-memory buffering.
 MAX_DOWNLOAD_BYTES: int = _int_env("TALKIES_MAX_DOWNLOAD_BYTES", 1024 * 1024 * 1024)
 
+STREAM_MAX_CONNECTIONS: int = _bounded_int_env(
+    "TALKIES_STREAM_MAX_CONNECTIONS", 4, 1, 1024
+)
+STREAM_MAX_FRAME_BYTES: int = _bounded_int_env(
+    "TALKIES_STREAM_MAX_FRAME_BYTES", 65536, 2, 16 * 1024 * 1024
+)
+STREAM_MAX_BUFFER_SECONDS: float = _bounded_float_env(
+    "TALKIES_STREAM_MAX_BUFFER_SECONDS", 5.0, 0.1, 300.0
+)
+STREAM_MAX_BUFFER_BYTES: int = int(STREAM_MAX_BUFFER_SECONDS * 16000 * 2)
+if STREAM_MAX_BUFFER_BYTES < STREAM_MAX_FRAME_BYTES:
+    raise ValueError(
+        "TALKIES_STREAM_MAX_BUFFER_SECONDS must hold at least one "
+        "TALKIES_STREAM_MAX_FRAME_BYTES frame"
+    )
+STREAM_IDLE_TIMEOUT_SECONDS: float = _bounded_duration_env(
+    "TALKIES_STREAM_IDLE_TIMEOUT", 30.0, 1.0, 3600.0
+)
+STREAM_MAX_DURATION_SECONDS: float = _bounded_duration_env(
+    "TALKIES_STREAM_MAX_DURATION", 4 * 3600.0, 1.0, 24 * 3600.0
+)
+
 # SSRF guard for URL downloads. Default off (LAN-fetch use cases dominate
 # in self-hosted deployments). Set to true to refuse URLs whose hostname
 # resolves to private / loopback / link-local / multicast / metadata IPs.
@@ -159,6 +217,8 @@ VALID_EXECUTORS = (
     "kokoro",
     "kokoro_nvidia",
     "qwen3_tts",
+    "sherpa",
+    "vosk",
 )
 
 

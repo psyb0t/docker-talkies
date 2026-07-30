@@ -3,8 +3,8 @@
 # Container lifecycle harness for talkies integration tests.
 #
 # Each test_*.sh / e2e_*.sh file sources this, declares the model slugs it
-# needs, calls harness_start to spawn its own --rm --gpus all container on
-# an ephemeral port, runs its checks via harness_run_tests, and the EXIT
+# needs, calls harness_start to spawn its own --rm container on an ephemeral
+# port, runs its checks via harness_run_tests, and the EXIT
 # trap tears the container down. No shared state between files, no global
 # orchestrator required — invoke any test file directly:
 #
@@ -16,8 +16,13 @@
 #   HARNESS_IMAGE          docker image (default psyb0t/talkies:local-cuda)
 #   HARNESS_CACHE_DIR      host dir for /data mount (default $REPO_ROOT/.e2e-cache).
 #                          Reused across runs to skip the ~1 GB prefetch.
+#   HARNESS_DEVICE         Talkies device to pass into the container (default cuda).
+#   HARNESS_USE_GPU        1 to add --gpus all and require an NVIDIA runtime;
+#                          0 for CPU-only images (default 1).
 #   HARNESS_READY_TIMEOUT  seconds to wait for /healthz (default 900)
 #   HARNESS_KEEP=1         leave container running on exit (debug)
+#   HARNESS_MODELS_FILE    optional custom model registry mounted at
+#                          /app/models.json (must be a readable local file).
 #
 # Sets for callers (read-only contract):
 #   HARNESS_PORT           ephemeral host port the container is mapped to
@@ -27,7 +32,10 @@
 #   HARNESS_CONTAINER      docker container name (for debugging)
 
 HARNESS_IMAGE="${HARNESS_IMAGE:-psyb0t/talkies:local-cuda}"
+HARNESS_DEVICE="${HARNESS_DEVICE:-cuda}"
+HARNESS_USE_GPU="${HARNESS_USE_GPU:-1}"
 HARNESS_READY_TIMEOUT="${HARNESS_READY_TIMEOUT:-900}"
+HARNESS_MODELS_FILE="${HARNESS_MODELS_FILE:-}"
 
 # Default cache dir — resolved relative to the repo root, NOT pwd of the
 # caller, so the same dir is reused whether you `cd` into tests/ first or
@@ -67,12 +75,17 @@ harness_preflight() {
             return 2
         }
     done
-    if ! docker info 2>/dev/null | grep -qiE "nvidia|cdi:"; then
+    if [ "$HARNESS_USE_GPU" != "0" ] &&
+        ! docker info 2>/dev/null | grep -qiE "nvidia|cdi:"; then
         echo "FATAL: docker daemon has no NVIDIA runtime — needs --gpus all" >&2
         return 2
     fi
     if ! docker image inspect "$HARNESS_IMAGE" >/dev/null 2>&1; then
         echo "FATAL: image $HARNESS_IMAGE not on host — build it first (make build-cuda)" >&2
+        return 2
+    fi
+    if [ -n "$HARNESS_MODELS_FILE" ] && [ ! -f "$HARNESS_MODELS_FILE" ]; then
+        echo "FATAL: HARNESS_MODELS_FILE is not a file: $HARNESS_MODELS_FILE" >&2
         return 2
     fi
     mkdir -p "$HARNESS_CACHE_DIR"
@@ -145,12 +158,23 @@ harness_start() {
         log_level_env=(-e "TALKIES_LOG_LEVEL=${TALKIES_LOG_LEVEL}")
     fi
 
-    docker run -d --rm --gpus all \
+    local gpu_args=()
+    if [ "$HARNESS_USE_GPU" != "0" ]; then
+        gpu_args=(--gpus all)
+    fi
+
+    local models_file_args=()
+    if [ -n "$HARNESS_MODELS_FILE" ]; then
+        models_file_args=(-v "${HARNESS_MODELS_FILE}:/app/models.json:ro")
+    fi
+
+    docker run -d --rm "${gpu_args[@]}" \
         --name "$HARNESS_CONTAINER" \
         -v "${HARNESS_CACHE_DIR}:/data" \
-        -e TALKIES_DEVICE=cuda \
+        -e TALKIES_DEVICE="$HARNESS_DEVICE" \
         -e TALKIES_ENABLED_MODELS="${HARNESS_ENABLED_MODELS}" \
         "${log_level_env[@]}" \
+        "${models_file_args[@]}" \
         -p "${HARNESS_PORT}:8000" \
         "$HARNESS_IMAGE" >/dev/null
 
@@ -161,8 +185,8 @@ harness_start() {
             echo "[harness] /healthz ok (after ${i}s)"
             return 0
         fi
-        if ! docker inspect -f '{{.State.Running}}' "$HARNESS_CONTAINER" 2>/dev/null \
-            | grep -q true; then
+        if ! docker inspect -f '{{.State.Running}}' "$HARNESS_CONTAINER" 2>/dev/null |
+            grep -q true; then
             echo "[harness] container exited during boot — last 80 lines:" >&2
             docker logs --tail 80 "$HARNESS_CONTAINER" >&2 2>&1 || true
             return 1

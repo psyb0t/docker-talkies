@@ -1,6 +1,6 @@
 [project]
 name = "talkies"
-version = "0.1.0"
+version = "0.12.0"
 description = "Unified speech service — OpenAI-compatible /v1/audio/transcriptions (Whisper/Parakeet/Canary ASR) + /v1/audio/speech (Kokoro TTS) with VAD chunking, stereo diarization, and full Whisper-shape timestamps"
 license = { text = "WTFPL" }
 requires-python = ">=3.10,<3.13"
@@ -28,6 +28,9 @@ dependencies = [
     "python-multipart==0.0.20",
     "httpx==0.28.1",
     "mcp==1.27.1",
+    "sherpa-onnx==1.13.4",
+    "vosk==0.3.45",
+    "sherpa-onnx-core==1.13.4",
 ]
 
 [project.urls]
@@ -43,7 +46,7 @@ packages = ["src/talkies"]
 [tool.uv]
 # Supply-chain defense: only install pkg versions older than `exclude-newer`.
 # Bumped by `make pkg-*` targets before any dep mutation. UTC midnight.
-exclude-newer = "2026-05-28T00:00:00Z"
+exclude-newer = "2026-07-22T00:00:00Z"
 
 [tool.mypy]
 # The dev/lint image is deliberately light (python + uv + lint tools only —

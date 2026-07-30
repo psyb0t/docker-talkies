@@ -54,6 +54,7 @@ models_root = Path(os.environ['TALKIES_DATA_DIR']) / 'models'
 print(f'[entrypoint] prefetching {len(enabled)} model(s) into {models_root}: {enabled}')
 for slug in enabled:
     repo = reg[slug]['repo']
+    revision = reg[slug].get('revision')
     target = models_root / slug
     # parakeet.cpp slugs share one multi-variant GGUF repo; honor the registry's
     # gguf_file field to fetch only that quant + the small text files we need
@@ -62,16 +63,18 @@ for slug in enabled:
     if target.is_dir() and any(target.iterdir()):
         print(f'[entrypoint] cached: {slug} -> {target}')
     else:
-        print(f'[entrypoint] downloading: {slug} ({repo}) -> {target}')
+        ref = f'@{revision}' if revision else ''
+        print(f'[entrypoint] downloading: {slug} ({repo}{ref}) -> {target}')
         target.mkdir(parents=True, exist_ok=True)
         if gguf_file:
             snapshot_download(
                 repo,
                 local_dir=str(target),
+                revision=revision,
                 allow_patterns=[gguf_file, 'README.md', 'LICENSE', 'config.json'],
             )
         else:
-            snapshot_download(repo, local_dir=str(target))
+            snapshot_download(repo, local_dir=str(target), revision=revision)
     # Dependency repos go into the standard HF cache (HF_HOME), not into
     # a flat per-slug dir. They're consumed by transformers/AutoTokenizer
     # inside the model's __init__ — those readers only know how to find

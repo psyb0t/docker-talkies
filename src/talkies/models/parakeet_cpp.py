@@ -27,9 +27,12 @@ import ctypes
 import gc
 import json
 import logging
+import math
 import os
 import re
+import sys
 import time
+from array import array
 from pathlib import Path
 from typing import Any
 
@@ -63,6 +66,10 @@ _DECODER_DEFAULT = 0
 # range NeMo's offline grouper uses (segment_gap_threshold = 6 * frame_sec
 # ≈ 0.48 s at the default 0.08 s/frame stride).
 _SEGMENT_GAP_THRESHOLD_S = 0.5
+
+_STREAM_DEFAULT_MAX_FRAME_BYTES = 65_536
+_PCM16_SAMPLE_WIDTH_BYTES = 2
+_PCM16_SCALE = 32_768.0
 
 
 class _CAPI:
@@ -104,6 +111,28 @@ class _CAPI:
             ctypes.c_char_p,
         ]
 
+        c.parakeet_capi_stream_begin.restype = ctypes.c_void_p
+        c.parakeet_capi_stream_begin.argtypes = [ctypes.c_void_p]
+
+        c.parakeet_capi_stream_begin_lang.restype = ctypes.c_void_p
+        c.parakeet_capi_stream_begin_lang.argtypes = [
+            ctypes.c_void_p,
+            ctypes.c_char_p,
+        ]
+
+        c.parakeet_capi_stream_feed_json.restype = ctypes.c_void_p
+        c.parakeet_capi_stream_feed_json.argtypes = [
+            ctypes.c_void_p,
+            ctypes.POINTER(ctypes.c_float),
+            ctypes.c_int,
+        ]
+
+        c.parakeet_capi_stream_finalize_json.restype = ctypes.c_void_p
+        c.parakeet_capi_stream_finalize_json.argtypes = [ctypes.c_void_p]
+
+        c.parakeet_capi_stream_free.restype = None
+        c.parakeet_capi_stream_free.argtypes = [ctypes.c_void_p]
+
         c.parakeet_capi_free_string.restype = None
         c.parakeet_capi_free_string.argtypes = [ctypes.c_void_p]
 
@@ -143,6 +172,7 @@ class ParakeetCppBackend:
         self._lock = asyncio.Lock()
         self._ctx: int | None = None  # raw void* as Python int
         self._last_used: float | None = None
+        self._active_streams = 0
         self._log = logging.getLogger(f"talkies.parakeet_cpp.{model_id}")
 
     def loaded(self) -> bool:
@@ -203,6 +233,11 @@ class ParakeetCppBackend:
         async with self._lock:
             if self._ctx is None:
                 return
+            if self._active_streams:
+                raise RuntimeError(
+                    f"cannot unload {self.model_id!r} while "
+                    f"{self._active_streams} streaming session(s) are active"
+                )
             self._log.info("unloading %s", self.repo)
             ctx = self._ctx
             self._ctx = None
@@ -212,6 +247,66 @@ class ParakeetCppBackend:
         self._log.info("unloaded %s", self.repo)
 
     # ── inference ────────────────────────────────────────────────────────
+
+    async def start_stream(
+        self,
+        *,
+        language: str | None = None,
+        max_frame_bytes: int = _STREAM_DEFAULT_MAX_FRAME_BYTES,
+    ) -> ParakeetCppStreamingSession:
+        """Create one stateful ABI-v4 decoder session.
+
+        ``max_frame_bytes`` bounds the temporary PCM16 and float32 buffers
+        allocated by every ``feed`` call. The loaded model context remains
+        pinned until the returned session is finalized or cancelled.
+        """
+        if max_frame_bytes < _PCM16_SAMPLE_WIDTH_BYTES:
+            raise ValueError("max_frame_bytes must allow at least one PCM16 sample")
+        if max_frame_bytes % _PCM16_SAMPLE_WIDTH_BYTES:
+            raise ValueError("max_frame_bytes must be PCM16 sample-aligned")
+
+        lang = (language or self._default_lang or "auto").strip() or "auto"
+        ctx = await self.get_model()
+        async with self._lock:
+            stream_ptr = await asyncio.to_thread(self._begin_stream_sync, ctx, lang)
+            self._active_streams += 1
+        return ParakeetCppStreamingSession(
+            backend=self,
+            ctx=ctx,
+            stream_ptr=stream_ptr,
+            max_frame_bytes=max_frame_bytes,
+        )
+
+    def _begin_stream_sync(self, ctx: int, language: str) -> int:
+        capi = _CAPI.get()
+        if capi.abi_version < 4:
+            raise RuntimeError(
+                "parakeet.cpp ABI v4 or newer is required for streaming; "
+                f"loaded v{capi.abi_version}"
+            )
+        if language == "auto":
+            stream_ptr = capi.lib.parakeet_capi_stream_begin(ctypes.c_void_p(ctx))
+        else:
+            stream_ptr = capi.lib.parakeet_capi_stream_begin_lang(
+                ctypes.c_void_p(ctx),
+                language.encode("utf-8"),
+            )
+        if not stream_ptr:
+            raise RuntimeError(
+                "parakeet_capi_stream_begin failed: " f"{_last_capi_error(capi, ctx)}"
+            )
+        return int(stream_ptr)
+
+    async def _release_stream(self, stream_ptr: int) -> None:
+        async with self._lock:
+            try:
+                await asyncio.to_thread(
+                    _CAPI.get().lib.parakeet_capi_stream_free,
+                    ctypes.c_void_p(stream_ptr),
+                )
+            finally:
+                self._active_streams = max(0, self._active_streams - 1)
+                self._last_used = time.monotonic()
 
     async def transcribe(
         self,
@@ -310,6 +405,225 @@ class ParakeetCppBackend:
             duration=None,
             supports_timestamps=bool(words),
         )
+
+
+class ParakeetCppStreamingSession:
+    """One native streaming decoder with exactly-once resource release."""
+
+    def __init__(
+        self,
+        *,
+        backend: ParakeetCppBackend,
+        ctx: int,
+        stream_ptr: int,
+        max_frame_bytes: int,
+    ) -> None:
+        self._backend = backend
+        self._ctx = ctx
+        self._stream_ptr: int | None = stream_ptr
+        self._max_frame_bytes = max_frame_bytes
+        self._final_result: dict[str, Any] | None = None
+        self._close_lock = asyncio.Lock()
+
+    async def feed(self, pcm_s16le: bytes) -> dict[str, Any]:
+        if self._stream_ptr is None:
+            raise RuntimeError("parakeet.cpp streaming session is closed")
+        samples = _pcm16le_to_float32(pcm_s16le, self._max_frame_bytes)
+        async with self._backend._lock:
+            if self._stream_ptr is None:
+                raise RuntimeError("parakeet.cpp streaming session is closed")
+            result = await asyncio.to_thread(
+                self._feed_sync,
+                self._stream_ptr,
+                samples,
+            )
+            self._backend._last_used = time.monotonic()
+            return result
+
+    def _feed_sync(self, stream_ptr: int, samples: Any) -> dict[str, Any]:
+        capi = _CAPI.get()
+        json_ptr = capi.lib.parakeet_capi_stream_feed_json(
+            ctypes.c_void_p(stream_ptr),
+            samples,
+            len(samples),
+        )
+        return _consume_stream_json(capi, self._ctx, json_ptr, "feed_json")
+
+    async def finalize(self) -> dict[str, Any]:
+        async with self._close_lock:
+            if self._final_result is not None:
+                return self._final_result
+            if self._stream_ptr is None:
+                self._final_result = _empty_stream_result()
+                return self._final_result
+            stream_ptr = self._stream_ptr
+            try:
+                async with self._backend._lock:
+                    self._final_result = await asyncio.to_thread(
+                        self._finalize_sync,
+                        stream_ptr,
+                    )
+            finally:
+                self._stream_ptr = None
+                await self._backend._release_stream(stream_ptr)
+            return self._final_result
+
+    def _finalize_sync(self, stream_ptr: int) -> dict[str, Any]:
+        capi = _CAPI.get()
+        json_ptr = capi.lib.parakeet_capi_stream_finalize_json(
+            ctypes.c_void_p(stream_ptr)
+        )
+        return _consume_stream_json(capi, self._ctx, json_ptr, "finalize_json")
+
+    async def cancel(self) -> None:
+        async with self._close_lock:
+            if self._stream_ptr is None:
+                return
+            stream_ptr = self._stream_ptr
+            self._stream_ptr = None
+            await self._backend._release_stream(stream_ptr)
+
+    async def close(self) -> None:
+        await self.cancel()
+
+
+def _pcm16le_to_float32(
+    pcm_s16le: bytes,
+    max_frame_bytes: int,
+) -> Any:
+    if not pcm_s16le:
+        raise ValueError("PCM16 frame must not be empty")
+    if len(pcm_s16le) > max_frame_bytes:
+        raise ValueError(
+            f"PCM16 frame is {len(pcm_s16le)} bytes; limit is {max_frame_bytes}"
+        )
+    if len(pcm_s16le) % _PCM16_SAMPLE_WIDTH_BYTES:
+        raise ValueError("PCM16 frame must contain complete 16-bit samples")
+
+    pcm = array("h")
+    pcm.frombytes(pcm_s16le)
+    if sys.byteorder != "little":
+        pcm.byteswap()
+    float_values = (ctypes.c_float * len(pcm))()
+    for index, value in enumerate(pcm):
+        float_values[index] = value / _PCM16_SCALE
+    return float_values
+
+
+def _consume_stream_json(
+    capi: _CAPI,
+    ctx: int,
+    json_ptr: Any,
+    operation: str,
+) -> dict[str, Any]:
+    if not json_ptr:
+        raise RuntimeError(
+            f"parakeet_capi_stream_{operation} failed: "
+            f"{_last_capi_error(capi, ctx)}"
+        )
+    try:
+        document = ctypes.string_at(json_ptr).decode("utf-8", errors="replace")
+    finally:
+        capi.lib.parakeet_capi_free_string(json_ptr)
+    try:
+        parsed = json.loads(document)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(
+            f"parakeet_capi_stream_{operation} returned malformed JSON"
+        ) from exc
+    if not isinstance(parsed, dict):
+        raise RuntimeError(
+            f"parakeet_capi_stream_{operation} returned a non-object JSON document"
+        )
+    return _parse_stream_result(parsed, operation)
+
+
+def _parse_stream_result(
+    parsed: dict[str, Any],
+    operation: str,
+) -> dict[str, Any]:
+    raw_words = parsed.get("words", [])
+    if not isinstance(raw_words, list):
+        raise RuntimeError(f"parakeet_capi_stream_{operation} returned invalid words")
+
+    words: list[dict[str, Any]] = []
+    for raw_word in raw_words:
+        if not isinstance(raw_word, dict):
+            raise RuntimeError(
+                f"parakeet_capi_stream_{operation} returned an invalid word"
+            )
+        word = _parse_stream_word(raw_word, operation)
+        if _LANG_TAG_RE.fullmatch(word["word"].strip()):
+            continue
+        words.append(word)
+
+    text = _strip_lang_tag(str(parsed.get("text", "")))
+    eou_value = parsed.get("eou", 0)
+    if not isinstance(eou_value, (bool, int)) or eou_value not in (0, 1):
+        raise RuntimeError(f"parakeet_capi_stream_{operation} returned invalid eou")
+    frame_sec = _finite_number(parsed.get("frame_sec", 0.0), "frame_sec", operation)
+    confidence = min((word["confidence"] for word in words), default=None)
+    return {
+        "text": text,
+        "words": words,
+        "confidence": confidence,
+        "eou": bool(eou_value),
+        "frame_sec": frame_sec,
+    }
+
+
+def _parse_stream_word(
+    raw_word: dict[str, Any],
+    operation: str,
+) -> dict[str, Any]:
+    start = _finite_number(raw_word.get("start"), "word start", operation)
+    end = _finite_number(raw_word.get("end"), "word end", operation)
+    confidence = _finite_number(raw_word.get("conf"), "word confidence", operation)
+    if start < 0 or end < start:
+        raise RuntimeError(
+            f"parakeet_capi_stream_{operation} returned invalid word timestamps"
+        )
+    if confidence < 0 or confidence > 1:
+        raise RuntimeError(
+            f"parakeet_capi_stream_{operation} returned invalid word confidence"
+        )
+    return {
+        "word": str(raw_word.get("w", "")),
+        "start": start,
+        "end": end,
+        "confidence": confidence,
+    }
+
+
+def _finite_number(value: Any, field: str, operation: str) -> float:
+    if isinstance(value, bool):
+        raise RuntimeError(f"parakeet_capi_stream_{operation} returned invalid {field}")
+    try:
+        result = float(value)
+    except (TypeError, ValueError) as exc:
+        raise RuntimeError(
+            f"parakeet_capi_stream_{operation} returned invalid {field}"
+        ) from exc
+    if not math.isfinite(result):
+        raise RuntimeError(
+            f"parakeet_capi_stream_{operation} returned non-finite {field}"
+        )
+    return result
+
+
+def _last_capi_error(capi: _CAPI, ctx: int) -> str:
+    error = capi.lib.parakeet_capi_last_error(ctypes.c_void_p(ctx)) or b""
+    return error.decode("utf-8", errors="replace") or "unknown native error"
+
+
+def _empty_stream_result() -> dict[str, Any]:
+    return {
+        "text": "",
+        "words": [],
+        "confidence": None,
+        "eou": False,
+        "frame_sec": 0.0,
+    }
 
 
 def _segments_from_words(words: list[dict]) -> list[dict]:

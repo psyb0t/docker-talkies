@@ -32,7 +32,7 @@ DEV_RUN_TTY := docker run --rm -it \
 .PHONY: help dev-image shell \
         build build-cuda build-all \
         run run-cuda \
-        test test-unit test-integration \
+        test test-unit test-integration test-streaming test-streaming-custom \
         lint format check clean \
         pkg-lock pkg-upgrade pkg-add pkg-remove pkg-update \
         compile-heavy
@@ -52,8 +52,8 @@ shell: dev-image ## Drop into a shell inside the dev container
 
 # -----------------------------------------------------------------------------
 # Package management — uv inside the dev container.
-# Every mutation bumps [tool.uv] exclude-newer to today first so the
-# supply-chain age gate is always anchored to the moment of the change.
+# Every mutation moves [tool.uv] exclude-newer to UTC midnight seven days ago,
+# preserving the supply-chain age gate while keeping its cutoff current.
 # -----------------------------------------------------------------------------
 
 pkg-lock: dev-image ## Refresh uv.lock (honors current exclude-newer)
@@ -78,8 +78,8 @@ pkg-update: dev-image ## Upgrade ONE package (usage: make pkg-update PKG=name)
 	$(BUMP_HOST)
 	$(DEV_RUN) uv lock --upgrade-package $(PKG)
 
-compile-heavy: ## Recompile hash-locked requirements-heavy-{cpu,cuda}.txt from scripts/heavy-deps-*.in
-	bash scripts/compile-heavy-deps.sh
+compile-heavy: dev-image ## Recompile hash-locked requirements-heavy-{cpu,cuda}.txt from scripts/heavy-deps-*.in
+	$(DEV_RUN) bash scripts/compile-heavy-deps.sh
 
 # -----------------------------------------------------------------------------
 # Production image builds.
@@ -122,7 +122,7 @@ run-cuda: build-cuda ## Run CUDA image locally (requires --gpus all support)
 test: test-unit ## Run unit tests (fast, offline, no GPU)
 
 test-unit: dev-image ## Run unit tests in the dev container
-	$(DEV_RUN) pytest tests/test_config.py tests/test_logging.py -v
+	$(DEV_RUN) pytest tests -v --ignore=tests/integration
 
 # Integration suite — needs a real CUDA host. Runs on the host (NOT inside
 # the dev container) because it spawns sibling docker containers and pokes
@@ -130,6 +130,12 @@ test-unit: dev-image ## Run unit tests in the dev container
 # TALKIES_SKIP_BUILD=1.
 test-integration: ## Run CUDA integration tests (host-side, needs --gpus all)
 	@bash tests/integration/run.sh
+
+test-streaming: build ## Run the CPU-native real WebSocket streaming ASR test
+	TALKIES_SKIP_BUILD=1 bash tests/integration/e2e_streaming_asr.sh
+
+test-streaming-custom: build ## Run real Sherpa-ONNX and Vosk WebSocket streaming tests
+	TALKIES_SKIP_BUILD=1 bash tests/integration/e2e_streaming_custom_backends.sh
 
 lint: dev-image ## Lint python sources
 	$(DEV_RUN) flake8 src

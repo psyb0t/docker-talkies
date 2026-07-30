@@ -4,6 +4,32 @@ All notable changes per release. Versions follow [semver](https://semver.org)
 pre-1.0 conventions: minor bumps may include breaking changes (called out
 explicitly with **Breaking.**), patch bumps are docs / build / fixes only.
 
+## v0.12.0 — 2026-07-29
+
+Live streaming ASR, new optional streaming runtimes, and CUDA dependency compatibility.
+
+- Added live ASR at `WS /v1/audio/transcriptions/stream`: strict JSON start and
+  control messages with a 4096-byte cap and duplicate-key rejection, bounded
+  binary PCM16LE input and one-message transport queue, revisioned
+  `partial`/`endpoint`/`final` transcripts, terminal stats, explicit cancel,
+  idle/duration/connection limits, and WebSocket-aware bearer-token rejection.
+- Added native streaming sessions for parakeet.cpp ABI v4, Sherpa-ONNX, and
+  Vosk. Every `whisper` executor also exposes bounded rolling-window
+  pseudo-streaming while preserving its existing file-transcription behavior.
+- Active WebSockets pin their model: sibling model switches and explicit unload
+  return conflicts, and the idle sweeper skips active stream models. Multiple
+  streams may share the pinned model up to `TALKIES_STREAM_MAX_CONNECTIONS`.
+- Added `sherpa` and `vosk` registry executors plus pinned
+  `sherpa-onnx==1.13.4`, `sherpa-onnx-core==1.13.4`, and `vosk==0.3.45`
+  runtimes. The native Sherpa companion is explicit because the Python wheel
+  metadata does not install it. The bundled registries do not enable model
+  slugs for these executors; custom registries supply compatible snapshots.
+- Added streaming protocol, client, configuration, backend, cancellation, and
+  custom-registry documentation in `README.md` and `streaming.md`.
+- Fixed the CUDA dependency lock to use matching `onnxruntime` and
+  `onnxruntime-gpu` 1.21.0 distributions.
+- Pinned all reusable GitHub Actions workflow callers to an immutable commit.
+
 ## v0.11.10 — 2026-07-27
 
 README fix. Documentation only, no behavior change.

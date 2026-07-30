@@ -53,11 +53,15 @@ class BearerAuthMiddleware:
 
         token = _extract_bearer(scope)
         if token is None:
-            await _send_401(send, "missing Authorization: Bearer header")
+            await _send_unauthorized(
+                scope,
+                send,
+                "missing Authorization: Bearer header",
+            )
             return
         # Constant-time compare to dodge any timing oracle on the token.
         if not hmac.compare_digest(token, self.token):
-            await _send_401(send, "invalid bearer token")
+            await _send_unauthorized(scope, send, "invalid bearer token")
             return
         await self.app(scope, receive, send)
 
@@ -86,3 +90,16 @@ async def _send_401(send: Send, detail: str) -> None:
         }
     )
     await send({"type": "http.response.body", "body": body})
+
+
+async def _send_unauthorized(scope: Scope, send: Send, detail: str) -> None:
+    if scope["type"] == "websocket":
+        await send(
+            {
+                "type": "websocket.close",
+                "code": 4401,
+                "reason": detail,
+            }
+        )
+        return
+    await _send_401(send, detail)
