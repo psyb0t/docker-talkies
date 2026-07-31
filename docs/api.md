@@ -96,8 +96,8 @@ Qwen3 PCM are generated as a complete response. Qwen3 PCM sends
 ## File staging
 
 The staging area is under `$TALKIES_DATA_DIR/files`. Leading slashes are
-normalized away; traversal segments, backslashes, null bytes, and symlink
-access are rejected.
+normalized away; traversal segments, backslashes, null bytes, and paths whose
+resolved target escapes the staging root are rejected.
 
 | Route | Behaviour |
 |---|---|

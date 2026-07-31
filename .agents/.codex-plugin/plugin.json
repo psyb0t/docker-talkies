@@ -1,6 +1,6 @@
 {
   "name": "talkies",
-  "version": "0.13.0",
+  "version": "0.13.1",
   "description": "Self-hosted OpenAI-compatible speech API — ASR transcription (Whisper, Parakeet, Canary, Nemotron, Sherpa-ONNX, Vosk) and TTS synthesis (Kokoro, Qwen3-TTS voice cloning) over HTTP and MCP.",
   "author": { "name": "psyb0t", "url": "https://github.com/psyb0t" },
   "homepage": "https://github.com/psyb0t/docker-talkies",

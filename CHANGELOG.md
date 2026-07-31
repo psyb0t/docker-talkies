@@ -4,6 +4,18 @@ All notable changes per release. Versions follow [semver](https://semver.org)
 pre-1.0 conventions: minor bumps may include breaking changes (called out
 explicitly with **Breaking.**), patch bumps are docs / build / fixes only.
 
+## v0.13.1 — 2026-07-31
+
+Documentation accuracy and install guidance corrections. No service behavior
+changed.
+
+- Corrected CPU/CUDA image defaults, model-registry paths, and the CUDA
+  no-GPU deployment guidance in the agent setup reference.
+- Repaired configuration-table rendering, clarified the staged-file path
+  boundary, and corrected the Qwen3-TTS model-mode matrix.
+- Removed an unsupported bulk-transcription helper reference and aligned the
+  documented load-timeout behavior with the current server.
+
 ## v0.13.0 — 2026-07-30
 
 Bundled selectable Sherpa-ONNX and Vosk ASR models with OpenAI-compatible file transcription.

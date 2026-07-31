@@ -57,7 +57,7 @@ details.
 | `qwen3-tts-0.6b` | `Qwen/Qwen3-TTS-12Hz-0.6B-Base` | `base` | no | yes | `alloy` |
 | `qwen3-tts-1.7b` | `Qwen/Qwen3-TTS-12Hz-1.7B-Base` | `base` | no | yes | `alloy` |
 | `qwen3-tts-0.6b-custom` | `Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice` | `custom_voice` | no | yes | `Vivian` |
-| `qwen3-tts-1.7b-custom` | `Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice` | no | yes | `Vivian` |
+| `qwen3-tts-1.7b-custom` | `Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice` | `custom_voice` | no | yes | `Vivian` |
 | `qwen3-tts-1.7b-design` | `Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign` | `voice_design` | no | yes | `design` |
 
 `GET /v1/audio/voices` is the source of truth for a model's valid voices.

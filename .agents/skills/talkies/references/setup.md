@@ -34,7 +34,11 @@ docker run -d --name talkies \
   psyb0t/talkies:latest-cuda
 ```
 
-The CUDA image also runs without `--gpus all` — it binds to CPU, ignores CUDA env vars, and refuses the GPU-only slugs at first call. Useful for debugging without a GPU host. `qwen3-tts-0.6b` will fail loudly on first request in that mode (the upstream `FasterQwen3TTS.from_pretrained` raises `ValueError` on non-CUDA).
+The CUDA image expects `--gpus all`. Without a GPU assignment it retains its
+`TALKIES_DEVICE=cuda` image default, so model loading fails rather than silently
+falling back. To use its CPU-compatible subset for debugging, explicitly set
+`-e TALKIES_DEVICE=cpu` and restrict `TALKIES_ENABLED_MODELS` to CPU-compatible
+slugs; GPU-only Qwen3-TTS slugs remain unavailable.
 
 **Verify:** `curl http://localhost:8000/healthz` returns `{"ok": true, "device": "...", "models": [...]}` once boot's done.
 
@@ -47,7 +51,7 @@ The CUDA image also runs without `--gpus all` — it binds to CPU, ignores CUDA 
 | CPU | `psyb0t/talkies:latest` | `linux/amd64` | 2× Whisper, Canary-180m-Flash, Nemotron-3.5-ASR, Sherpa Zipformer ×4, Vosk, Kokoro-82M ×2 runtimes | ~3 GB |
 | CUDA | `psyb0t/talkies:latest-cuda` | `linux/amd64` | all twelve ASR + Kokoro-82M ×2 runtimes + Qwen3-TTS ×5 | ~11 GB |
 
-The CPU image only ships ASR models that actually finish in a sane time without a GPU. Parakeet-TDT is autoregressive (slow on CPU). Canary-1B and Canary-Qwen-2.5B are flat-out too big. Use the CUDA image for those even if you mostly run on CPU — it gracefully falls back (except for `qwen3-tts-0.6b`, which hard-fails on non-CUDA). Kokoro-82M ships in both images — at 82M params it synthesizes faster than real-time on a 4-core CPU, no GPU needed.
+The CPU image only ships ASR models that actually finish in a sane time without a GPU. Parakeet-TDT is autoregressive (slow on CPU). Canary-1B and Canary-Qwen-2.5B need the CUDA image with `--gpus all`; use the CPU image for CPU workloads. Kokoro-82M ships in both images — at 82M params it synthesizes faster than real-time on a 4-core CPU, no GPU needed.
 
 Both images bake `espeak-ng` into the runtime layer because Kokoro's G2P for es/fr/hi/it/pt routes through it via `misaki.espeak.EspeakG2P`. The Python `kokoro==0.9.4` package and its lightweight dependency chain (`misaki`, no `[ja]` / `[zh]` extras) are pinned alongside the rest of the ML stack in `Dockerfile` / `Dockerfile.cuda`.
 
@@ -70,8 +74,8 @@ Container binds `0.0.0.0:8000` unconditionally. Control network exposure at `doc
 
 | Var | Default | What it does |
 |---|---|---|
-| `TALKIES_DEVICE` | `auto` | `auto` picks `cuda` if available else `cpu`. Pin to a specific GPU with `cuda:N`. |
-| `TALKIES_MODELS_FILE` | `/app/models.json` | Path to the model registry JSON. Override to ship a custom subset. CPU image defaults to `/app/models-cpu.json` automatically. |
+| `TALKIES_DEVICE` | image default (`cpu` CPU / `cuda` CUDA) | `auto` picks `cuda` if available else `cpu`; it is an accepted override. Pin to a specific GPU with `cuda:N`. |
+| `TALKIES_MODELS_FILE` | `/app/models.json` | Path to the model registry JSON. Override to ship a custom subset. The CPU image copies `models-cpu.json` to this path; the CUDA image copies `models.json` here. |
 | `TALKIES_ENABLED_MODELS` | (empty = all from `models.json`) | Comma-separated slug whitelist. Restricts both the boot-time snapshot download and the queryable surface of `/v1/models`. Unknown slugs fail fast on startup. |
 | `TALKIES_PRELOAD` | (empty) | Comma-separated slugs to load into RAM/VRAM at boot, before uvicorn accepts requests. Skips cold-load on first transcription. Must be a subset of `TALKIES_ENABLED_MODELS`. |
 
@@ -89,7 +93,7 @@ Container binds `0.0.0.0:8000` unconditionally. Control network exposure at `doc
 |---|---|---|
 | `TALKIES_MODEL_TTL` | `600` (10 min) | Idle time before a loaded backend is unloaded by the sweeper. Bare number = seconds; also accepts Go-style `3h30m5s`, `45m`, `90s`. `0` disables auto-unload. |
 | `TALKIES_SWEEPER_INTERVAL` | `60` | How often the sweeper checks for idle models. |
-| `TALKIES_LOAD_TIMEOUT` | `300` | Per-model load timeout. Initial weights download + warmup runs inside this budget. |
+| `TALKIES_LOAD_TIMEOUT` | `300` | Parsed configuration reserved for a future model-load timeout; the current server does not apply it. |
 
 ### Upload + download caps
 

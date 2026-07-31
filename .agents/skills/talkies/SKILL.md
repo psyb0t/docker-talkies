@@ -701,16 +701,8 @@ done
 ```
 
 The first hit on each URL downloads + caches; re-running the loop is free.
-
-For a fuller bulk-transcribe driver (mix of local paths + URLs, per-input output files, error reporting, optional diarization) see [`scripts/bulk_transcribe.sh`](scripts/bulk_transcribe.sh):
-
-```bash
-TALKIES_URL=http://localhost:8000 \
-TALKIES_MODEL=whisper-large-v3-turbo \
-TALKIES_FORMAT=srt \
-TALKIES_OUTDIR=./subs \
-  bash scripts/bulk_transcribe.sh inputs.txt
-```
+For local files, replace the `file_path` form field with `file=@path/to/audio`
+in the same request shape.
 
 ## Tips
 

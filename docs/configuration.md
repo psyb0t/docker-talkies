@@ -31,8 +31,8 @@ unsets it while fetching selected snapshots, then starts the application.
 
 ## File-transcription VAD
 
-| Variable | Default |
-|---|---:|
+| Variable | Default | Meaning |
+|---|---:|---|
 | `TALKIES_VAD_CHUNK_THRESHOLD` | `30.0` seconds | Audio above this duration enters VAD segmentation |
 | `TALKIES_VAD_MAX_SPEECH` | `28.0` seconds | Maximum detected speech region length |
 | `TALKIES_VAD_MIN_SILENCE_MS` | `500` | Silence needed to split a region |
@@ -43,8 +43,8 @@ Audio above the threshold enters VAD segmentation before backend transcription.
 
 ## Live ASR and Qwen3 streaming
 
-| Variable | Default | Valid values |
-|---|---:|---|
+| Variable | Default | Valid values | Meaning |
+|---|---:|---|---|
 | `TALKIES_STREAM_MAX_CONNECTIONS` | `4` | 1–1024 | Active WebSockets across the server |
 | `TALKIES_STREAM_MAX_FRAME_BYTES` | `65536` | 2–16777216 | Largest accepted binary PCM frame |
 | `TALKIES_STREAM_MAX_BUFFER_SECONDS` | `5.0` | 0.1–300 | Rolling Whisper buffer size |

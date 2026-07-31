@@ -26,7 +26,8 @@ ownership model, automatic expiry, or retention policy.
 - Delete workflow data with `DELETE /v1/files/{path}` when it is no longer needed.
 
 The file API normalizes leading slashes and rejects traversal, backslashes,
-null bytes, and symlink access, but that is not tenant isolation.
+null bytes, and paths whose resolved target escapes the staging root, but that
+is not tenant isolation.
 
 ## Model lifecycle
 
