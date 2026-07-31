@@ -1,6 +1,6 @@
 [project]
 name = "talkies"
-version = "0.13.1"
+version = "0.13.2"
 description = "Unified speech service — OpenAI-compatible /v1/audio/transcriptions (Whisper/Parakeet/Canary ASR) + /v1/audio/speech (Kokoro TTS) with VAD chunking, stereo diarization, and full Whisper-shape timestamps"
 license = { text = "WTFPL" }
 requires-python = ">=3.10,<3.13"

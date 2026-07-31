@@ -4,6 +4,21 @@ All notable changes per release. Versions follow [semver](https://semver.org)
 pre-1.0 conventions: minor bumps may include breaking changes (called out
 explicitly with **Breaking.**), patch bumps are docs / build / fixes only.
 
+## v0.13.2 — 2026-07-31
+
+### Fixed
+
+- Every caller now references the shared reusable workflows at `@master` instead
+  of a commit SHA. The pin held this repo on a revision from months earlier, and
+  two fixes it needed were already sitting on master with no way to reach it: the
+  badge job racing itself between the branch and tag runs of the same release
+  (`cannot lock ref 'refs/heads/badges'`), and — more quietly — `release-multi`
+  being skipped outright, so tags from `v0.11.0` onward built and pushed images,
+  passed their scans, went green, and never created a GitHub Release. Releases
+  stop at `v0.10.0` while tags run to `v0.13.1` for exactly that reason.
+- Third-party actions are unaffected and still pin by full commit SHA; the
+  force-push threat that justifies pinning does not apply to a repo we own.
+
 ## v0.13.1 — 2026-07-31
 
 Documentation accuracy and install guidance corrections. No service behavior
