@@ -4,6 +4,49 @@ All notable changes per release. Versions follow [semver](https://semver.org)
 pre-1.0 conventions: minor bumps may include breaking changes (called out
 explicitly with **Breaking.**), patch bumps are docs / build / fixes only.
 
+## v0.13.3 — 2026-08-01
+
+### Fixed
+
+- **Sherpa-ONNX returned no word timestamps at all.** `OnlineRecognizer.get_result()`
+  returns `result.text.strip()` — a plain `str` — so the word extraction in
+  `src/talkies/models/sherpa.py` read `tokens` and `timestamps` off a string and
+  always came back empty. Every Sherpa model silently produced `"words": []` on
+  `POST /v1/audio/transcriptions` and over the streaming WebSocket, whatever the
+  caller requested. The adapter now reads the full `OnlineRecognizerResult` via
+  `get_result_all()`, falling back to the string form on wrapper builds without it.
+- **Sherpa word entries were subword fragments, not words.** Transducer tokens are
+  BPE pieces — `"QUICK"` arrives as `("QUI", "CK")` — and each token was emitted as
+  its own word. Tokens are now grouped back into words on the leading-space marker
+  that denotes a word start. Vocabularies without that marker (char-level and
+  word-level) are detected and left one-token-per-word, since joining on an absent
+  boundary would collapse an utterance into a single word.
+- **Sherpa now reports per-word `confidence`**, derived from the model's per-token
+  acoustic log-probabilities (`ys_probs`) and averaged over each word's tokens.
+  Same field name and same 0–1 range the Vosk backend already emits, so both
+  backends return the same word shape.
+- **File transcription through a Sherpa model duplicated text.** The batch file
+  route opens its stream with `interim_results=False`, which the Vosk backend
+  honours and the Sherpa backend ignored. `get_result` is cumulative within an
+  utterance, so every partial repeated the whole prefix and the batch adapter
+  concatenated each revision — a nine-word clip came back as `"THE QUICK THE QUICK
+  BROWN FOX … THE QUICK BROWN FOX JUMPS OVER THE LAZY DO"`. Sherpa now respects the
+  flag. Live streaming is unaffected: cumulative partials are the point there, and
+  callers asking for interim results still receive them.
+- Sherpa transcript events now use the shared `EVENT_PARTIAL` / `EVENT_ENDPOINT` /
+  `EVENT_FINAL` constants rather than bare string literals, matching the Vosk backend.
+
+### Changed
+
+- CI: the repository is push-mirrored to GitLab and Codeberg on every branch and
+  tag, and archived to the Wayback Machine (through the authenticated Save Page Now
+  API) and Software Heritage. Mirror and archive live in
+  `.github/workflows/mirror-and-archive.yml` beside the pipeline rather than inside
+  it, because the pipeline is tag-only while the mirror needs every push.
+- CI: `.github/workflows/issue-pull.yml` pulls issues opened on the Codeberg and
+  GitLab mirrors back into GitHub. Only the scheduled run is jittered; a manual
+  dispatch runs immediately.
+
 ## v0.13.2 — 2026-07-31
 
 ### Fixed

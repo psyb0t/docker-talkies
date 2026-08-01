@@ -13,7 +13,14 @@ from array import array
 from collections.abc import Mapping
 from typing import Any, Callable
 
-from ..asr_streaming import StreamConfig, StreamingASRSession, TranscriptEvent
+from ..asr_streaming import (
+    EVENT_ENDPOINT,
+    EVENT_FINAL,
+    EVENT_PARTIAL,
+    StreamConfig,
+    StreamingASRSession,
+    TranscriptEvent,
+)
 from .base import TranscribeResult
 from .stream_batch import transcribe_wav_via_stream
 
@@ -200,18 +207,23 @@ class SherpaStreamingSession:
         self._stream.accept_waveform(self._config.sample_rate, samples)
         self._accepted_samples += len(samples)
         self._decode_ready()
-        result = self._recognizer.get_result(self._stream)
+        result = _rich_result(self._recognizer, self._stream)
         text = _result_text(result)
         if self._recognizer.is_endpoint(self._stream):
-            event = self._event("endpoint", result, is_final=False)
+            event = self._event(EVENT_ENDPOINT, result, is_final=False)
             self._recognizer.reset(self._stream)
             self._last_partial = ""
             self._utterance_start_seconds = self.audio_seconds
             return [event]
+        # `get_result` is cumulative within an utterance, so each partial
+        # repeats the whole prefix. Callers that asked for final-only output
+        # (the batch file route) would otherwise concatenate every revision.
+        if not self._config.interim_results:
+            return []
         if not text or text == self._last_partial:
             return []
         self._last_partial = text
-        return [self._event("partial", result, is_final=False)]
+        return [self._event(EVENT_PARTIAL, result, is_final=False)]
 
     async def finalize(self) -> TranscriptEvent:
         async with self._operation_lock:
@@ -228,8 +240,8 @@ class SherpaStreamingSession:
         self._stream.input_finished()
         self._decode_ready()
         return self._event(
-            "final",
-            self._recognizer.get_result(self._stream),
+            EVENT_FINAL,
+            _rich_result(self._recognizer, self._stream),
             is_final=True,
         )
 
@@ -298,6 +310,20 @@ def _pcm16_to_float(pcm_s16le: bytes) -> array[float]:
     return array("f", (sample / _PCM16_SCALE for sample in samples))
 
 
+def _rich_result(recognizer: Any, stream: Any) -> Any:
+    """Return the full result object, not the text-only convenience form.
+
+    `OnlineRecognizer.get_result()` returns `result.text.strip()` — a plain
+    `str`, which silently strips tokens, timestamps and `ys_probs`. Only
+    `get_result_all()` hands back the `OnlineRecognizerResult`. Older builds
+    of the wrapper lack it, so fall back to the string form there.
+    """
+    get_result_all = getattr(recognizer, "get_result_all", None)
+    if callable(get_result_all):
+        return get_result_all(stream)
+    return recognizer.get_result(stream)
+
+
 def _result_text(result: Any) -> str:
     if isinstance(result, str):
         return result.strip()
@@ -320,21 +346,92 @@ def _result_words(
         usable = min(len(tokens), len(timestamps))
     except TypeError:
         return []
+    # Transducer tokens are BPE pieces, not words: "QUICK" arrives as
+    # ("QUI", "CK") and a leading space marks a word boundary. Emitting one
+    # entry per token would report subword fragments as words, so group the
+    # pieces back up before building the OpenAI-shaped word list.
+    probabilities = _token_probabilities(result, usable)
+    groups = _group_tokens_into_words(tokens, usable)
+
     words: list[dict[str, Any]] = []
-    for index in range(usable):
-        token = tokens[index]
-        timestamp = timestamps[index]
-        if not isinstance(token, str) or not isinstance(timestamp, (int, float)):
+    for group in groups:
+        first, last = group[0], group[-1]
+        timestamp = timestamps[first]
+        if not isinstance(timestamp, (int, float)):
             continue
         start = float(timestamp) + time_offset
         if not math.isfinite(start) or start < time_offset or start > audio_seconds:
             continue
         end = audio_seconds
-        if index + 1 < usable:
-            next_timestamp = timestamps[index + 1]
+        if last + 1 < usable:
+            next_timestamp = timestamps[last + 1]
             if isinstance(next_timestamp, (int, float)):
                 candidate = float(next_timestamp) + time_offset
                 if math.isfinite(candidate) and candidate >= start:
                     end = min(candidate, audio_seconds)
-        words.append({"word": token, "start": start, "end": max(start, end)})
+        word = {
+            "word": "".join(tokens[index] for index in group).strip(),
+            "start": start,
+            "end": max(start, end),
+        }
+        confidence = _group_confidence(probabilities, group)
+        if confidence is not None:
+            word["confidence"] = confidence
+        words.append(word)
     return words
+
+
+def _group_tokens_into_words(tokens: Any, usable: int) -> list[list[int]]:
+    """Group BPE token indices into words, splitting on the leading space.
+
+    Only BPE vocabularies mark word starts with a leading space. Char-level
+    and word-level vocabularies do not, and joining on that absent boundary
+    would collapse the whole utterance into a single word — so when no token
+    carries the marker, every token stands alone.
+    """
+    indices = [
+        index
+        for index in range(usable)
+        if isinstance(tokens[index], str) and tokens[index]
+    ]
+    uses_space_marker = any(tokens[index].startswith(" ") for index in indices)
+    if not uses_space_marker:
+        return [[index] for index in indices]
+
+    groups: list[list[int]] = []
+    for index in indices:
+        if tokens[index].startswith(" ") or not groups:
+            groups.append([index])
+            continue
+        groups[-1].append(index)
+    return groups
+
+
+def _token_probabilities(result: Any, usable: int) -> list[float]:
+    """Convert per-token acoustic log-probs (`ys_probs`) to probabilities."""
+    ys_probs = getattr(result, "ys_probs", ())
+    if isinstance(ys_probs, (str, bytes)):
+        return []
+    try:
+        available = min(len(ys_probs), usable)
+    except TypeError:
+        return []
+    probabilities: list[float] = []
+    for index in range(available):
+        log_probability = ys_probs[index]
+        if not isinstance(log_probability, (int, float)):
+            return []
+        if not math.isfinite(log_probability) or log_probability > 0:
+            return []
+        probabilities.append(math.exp(float(log_probability)))
+    return probabilities
+
+
+def _group_confidence(
+    probabilities: list[float],
+    group: list[int],
+) -> float | None:
+    covered = [probabilities[index] for index in group if index < len(probabilities)]
+    if not covered:
+        return None
+    return min(1.0, max(0.0, sum(covered) / len(covered)))

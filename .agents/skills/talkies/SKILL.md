@@ -232,6 +232,8 @@ Exactly one of `file` or `file_path` must be set — passing both or neither ret
 
 Whisper-only confidence fields (`avg_logprob`, `compression_ratio`, `no_speech_prob`) are emitted as `null` regardless of backend so clients reading them don't crash. `tokens` is always `[]`.
 
+The `sherpa` and `vosk` executors add a per-word `confidence` in the 0–1 range to each entry in `words` — Vosk reports the decoder's own score, Sherpa derives one from the model's per-token acoustic log-probabilities. No other backend emits it, so treat the field as optional.
+
 ### Stereo Diarization
 
 Pass `diarization=true` and upload a 2-channel file. Left channel = speaker `L`, right channel = speaker `R`. Each channel is transcribed independently, the two timelines are merged chronologically by segment start time.
