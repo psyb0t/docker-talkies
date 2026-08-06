@@ -4,6 +4,22 @@ All notable changes per release. Versions follow [semver](https://semver.org)
 pre-1.0 conventions: minor bumps may include breaking changes (called out
 explicitly with **Breaking.**), patch bumps are docs / build / fixes only.
 
+## v0.14.1 — 2026-08-06
+
+Agent integrations now describe and install the released Talkies surfaces
+without overstating MCP capabilities or omitting CUDA behavior.
+
+### Fixed
+
+- Added copy-pasteable Claude Code, Codex, and OpenClaw installation commands
+  to the root README.
+- Corrected Claude Code and Codex plugin descriptions to distinguish HTTP TTS
+  from the six ASR/file-staging tools exposed through MCP.
+- Corrected the Talkies skill permission schema and documented Nemotron's
+  parakeet.cpp CUDA path alongside CPU inference.
+- Made the OpenClaw bridge entry point executable and normalized the bundled
+  bulk-transcription script to the repository's shell format.
+
 ## v0.14.0 — 2026-08-05
 
 Model-aware concurrency and native CUDA lifecycle controls make parallel speech

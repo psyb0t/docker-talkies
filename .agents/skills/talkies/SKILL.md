@@ -1,12 +1,12 @@
 ---
 name: talkies
-description: Self-hosted OpenAI-compatible speech service. /v1/audio/transcriptions fronts 12 open ASR models (Whisper, Parakeet, Nemotron-3.5-ASR, Canary, Sherpa-ONNX, Vosk); /v1/audio/transcriptions/stream accepts live PCM over WebSocket. /v1/audio/speech fronts 2 TTS engines / 3 backends — Kokoro-82M (41 baked voices, PyTorch + ONNX runtimes) and the CUDA-only Qwen3-TTS family (voice cloning, preset speakers, voice design). Stereo diarization, URL fetching, MCP endpoint, bearer auth.
+description: Self-hosted OpenAI-compatible speech service. /v1/audio/transcriptions fronts 12 open ASR models (Whisper, Parakeet, Nemotron-3.5-ASR, Canary, Sherpa-ONNX, Vosk); /v1/audio/transcriptions/stream accepts live PCM over WebSocket. /v1/audio/speech fronts 2 TTS engines / 3 backends — Kokoro-82M (41 baked voices, PyTorch + ONNX runtimes) and the CUDA-only Qwen3-TTS family (voice cloning, preset speakers, voice design). Stereo diarization, URL fetching, six ASR/file-staging MCP tools, bearer auth.
 homepage: https://github.com/psyb0t/docker-talkies
 user-invocable: true
 permissions:
-  - network: outbound HTTP to the configured TALKIES_URL; the talkies SERVER also performs its own outbound fetch when a URL is passed as file_path (server-side download, not client-side)
-  - shell: documented setup/workflow examples invoke local curl / ffmpeg / docker
-  - filesystem: reads/writes server-side staged files via the /v1/files endpoints (list/put/get/delete); no local filesystem access by this skill itself
+  network: "Outbound HTTP to the configured TALKIES_URL; the Talkies server also fetches URLs supplied as file_path."
+  shell: "Documented setup and workflow examples invoke local curl, ffmpeg, and docker commands."
+  filesystem: "Reads and writes server-side staged files through /v1/files; the skill itself does not access the local filesystem."
 metadata:
   { "openclaw": { "emoji": "🎙️", "primaryEnv": "TALKIES_URL", "requires": { "bins": ["docker", "curl"] } } }
 ---
@@ -145,7 +145,7 @@ Vosk model-registry entries.
 | `whisper-large-v3` | faster-whisper | yes | yes | 99 auto-detect | best accuracy, slowest |
 | `whisper-large-v3-turbo` | faster-whisper | yes | yes | 99 auto-detect | sweet spot — fast, accurate |
 | `parakeet-tdt-0.6b-v3` | NeMo TDT | no | yes | English only | very fast on GPU |
-| `nemotron-3.5-asr-0.6b` | parakeet.cpp / ggml (CPU inference) | yes | yes | 40+ locales, auto-detect | CPU-optimized multilingual; pin via `language=` |
+| `nemotron-3.5-asr-0.6b` | parakeet.cpp / ggml | yes | yes | 40+ locales, auto-detect | CPU or CUDA multilingual; pin via `language=` |
 | `canary-180m-flash` | NeMo Canary | yes | yes | English only (small) | smallest, runs anywhere |
 | `canary-1b-flash` | NeMo Canary | no | yes | en/de/fr/es + translation | multilingual, translation |
 | `canary-qwen-2.5b` | NeMo SALM | no | yes | English only | best English accuracy (no timestamps) |

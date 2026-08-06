@@ -26,6 +26,11 @@ docker run -d --name talkies \
 
 Serves all twelve ASR models plus both TTS engines / 3 backends (`kokoro-82m`, `kokoro-82m-nvidia`, and the 5 Qwen3-TTS slugs). Requires the NVIDIA Container Toolkit on the host.
 
+Nemotron runs through the SHA-256-pinned upstream parakeet.cpp v0.5.0 CUDA 12
+bundle in this image, so both file transcription and native WebSocket sessions
+use GPU offload. The matching CUDA 12.9 runtime libraries stay isolated under
+`/opt/parakeet` from the image's Python ML stack.
+
 ```bash
 docker run -d --name talkies \
   --gpus all \

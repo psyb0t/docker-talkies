@@ -76,6 +76,46 @@ Exact slugs, executors, and registry format: [Models and registries](docs/models
 | [Operations and security](docs/operations.md) | Exposure, model memory, data retention, logs |
 | [Development](docs/development.md) | Make targets, test suites, image builds |
 
+## Agent integrations
+
+The [Talkies skill](.agents/skills/talkies) teaches agents to use the HTTP,
+WebSocket, and MCP surfaces. Install it through the shared `psyb0t` marketplace
+or let Codex discover it directly from this checkout.
+
+### Claude Code
+
+```bash
+claude plugin marketplace add psyb0t/agents
+claude plugin install talkies@psyb0t
+```
+
+Claude Code prompts for the Talkies URL and, when enabled, the bearer token;
+the sensitive token is stored through the client's protected configuration.
+
+### Codex
+
+```bash
+codex plugin marketplace add psyb0t/agents
+codex plugin add talkies@psyb0t
+```
+
+A marketplace install invokes the skill as `$talkies:talkies`. Codex also
+discovers `.agents/skills/talkies` directly in this repository, where it is
+invoked as `$talkies` without installation.
+
+### OpenClaw
+
+The skill and MCP bridge are published through ClawHub:
+
+```bash
+openclaw skills install @psyb0t/talkies
+openclaw plugins install clawhub:@psyb0t/talkies
+```
+
+The bridge connects local stdio MCP clients to a running Talkies `/v1/mcp`
+endpoint. Set `TALKIES_URL` and, when authentication is enabled,
+`TALKIES_AUTH_TOKEN`.
+
 ## Security in one minute
 
 `TALKIES_AUTH_TOKEN` enables a shared bearer token for every HTTP and WebSocket
