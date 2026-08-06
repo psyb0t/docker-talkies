@@ -29,6 +29,7 @@ import json
 import logging
 from typing import Any, Awaitable, Callable
 
+from fastapi import HTTPException
 from mcp.server.fastmcp import FastMCP
 
 from . import config
@@ -154,6 +155,8 @@ def build_mcp_server(
                 f"unknown model {exc.args[0]!r}; configured: "
                 f"{list(backends.keys())}"
             ) from exc
+        except HTTPException as exc:
+            raise ValueError(str(exc.detail)) from exc
 
         if isinstance(payload, str):
             return payload

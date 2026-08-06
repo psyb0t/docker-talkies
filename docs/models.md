@@ -25,7 +25,10 @@ All ASR slugs use `POST /v1/audio/transcriptions`. A registry may provide the
 default source language, target language, and task; request `language` wins
 over the source-language default. The bundled Nemotron entry uses the
 `nemotron-3.5-asr-streaming-0.6b-q8_0.gguf` file and defaults its source
-language to `auto`.
+language to `auto`. Its bundled `max_concurrency` is two in both registries.
+The CPU image executes its parakeet.cpp backend on CPU. The CUDA image installs
+the SHA-256-pinned upstream v0.5.0 CUDA 12 binary bundle for GPU offload and
+keeps the bundle's CUDA libraries isolated from the Python ML stack.
 
 The registry declares English for Canary-180M and Parakeet-TDT, English/German/
 French/Spanish for Canary-1B, English for Canary-Qwen, and `auto` plus 23 named
@@ -84,7 +87,9 @@ docker run --rm -it \
   psyb0t/talkies:latest
 ```
 
-Every entry needs a `repo`. `executor` defaults to `whisper` and must be one
+Every entry needs a `repo`. Optional `max_concurrency` is an integer from 1 to
+1024 and limits active inference requests across every API surface. `executor`
+defaults to `whisper` and must be one
 of `whisper`, `parakeet`, `parakeet_cpp`, `canary_multitask`, `canary_salm`,
 `kokoro`, `kokoro_nvidia`, `qwen3_tts`, `sherpa`, or `vosk`. The entrypoint
 downloads a selected repository into `/data/models/<slug>`. `revision`, when
@@ -93,6 +98,10 @@ commit for reproducible contents. An optional `download_patterns` array limits
 the snapshot to static registry-owned paths, which is useful when one repository
 contains several model variants. See [Streaming](streaming.md#sherpa-onnx-and-vosk)
 for the required native-streaming fields.
+
+Concurrency is an admission limit, not a promise that a backend executes all
+admitted requests simultaneously. A backend may serialize access to a shared
+native context; parakeet.cpp currently does this for feed and finalize calls.
 
 The authoritative bundled entries are
 [`models-cpu.json`](../models-cpu.json) and [`models.json`](../models.json).

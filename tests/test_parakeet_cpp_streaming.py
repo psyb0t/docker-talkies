@@ -20,9 +20,9 @@ _MODELS_PACKAGE.__path__ = [
 ]
 sys.modules["talkies.models"] = _MODELS_PACKAGE
 
-from talkies.models.parakeet_cpp import (  # noqa: E402
+from talkies.models.parakeet_cpp import (
+    _CAPI,  # noqa: E402
     ParakeetCppBackend,
-    _CAPI,
     _consume_stream_json,
     _pcm16le_to_float32,
 )
@@ -45,6 +45,7 @@ class _FakeLibrary:
         self.feed_samples: list[list[float]] = []
         self.freed_strings = 0
         self.freed_streams: list[int] = []
+        self.freed_contexts: list[int] = []
         self.feed_document: Any = {
             "text": "hello <en-us>",
             "eou": 1,
@@ -68,6 +69,7 @@ class _FakeLibrary:
         self.parakeet_capi_stream_feed_json = _NativeFunction(self._feed)
         self.parakeet_capi_stream_finalize_json = _NativeFunction(self._finalize)
         self.parakeet_capi_stream_free = _NativeFunction(self._free_stream)
+        self.parakeet_capi_free = _NativeFunction(self._free_context)
         self.parakeet_capi_free_string = _NativeFunction(self._free_string)
         self.parakeet_capi_last_error = _NativeFunction(lambda _ctx: self.last_error)
 
@@ -97,6 +99,9 @@ class _FakeLibrary:
 
     def _free_stream(self, stream: Any) -> None:
         self.freed_streams.append(int(stream.value))
+
+    def _free_context(self, context: Any) -> None:
+        self.freed_contexts.append(int(context))
 
     def _free_string(self, _pointer: Any) -> None:
         self.freed_strings += 1
@@ -231,6 +236,21 @@ def test_active_stream_prevents_backend_unload(
 
     asyncio.run(scenario())
     assert fake_capi.freed_streams == [201]
+
+
+def test_backend_unload_releases_native_model_context(
+    fake_capi: _FakeLibrary,
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        backend = _backend(tmp_path)
+
+        await backend.unload()
+
+        assert backend.loaded() is False
+
+    asyncio.run(scenario())
+    assert fake_capi.freed_contexts == [101]
 
 
 def test_malformed_native_json_is_freed_and_rejected(

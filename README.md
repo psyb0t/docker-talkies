@@ -56,6 +56,8 @@ and MCP are Talkies extensions.
 - Live ASR: bundled Nemotron, Sherpa-ONNX, and Vosk are native; bundled Whisper
   is a bounded rolling decoder. Sherpa and Vosk also work through the
   OpenAI-compatible file-transcription endpoint.
+- Per-model concurrency limits cover WebSocket, HTTP, MCP, ASR, and TTS; the
+  bundled Nemotron CPU and CUDA entries admit two requests.
 - Streaming TTS: Qwen3 returns incremental raw PCM for
   `response_format="pcm"`; other TTS formats and Kokoro are buffered.
 

@@ -155,6 +155,24 @@ MAX_DOWNLOAD_BYTES: int = _int_env("TALKIES_MAX_DOWNLOAD_BYTES", 1024 * 1024 * 1
 STREAM_MAX_CONNECTIONS: int = _bounded_int_env(
     "TALKIES_STREAM_MAX_CONNECTIONS", 4, 1, 1024
 )
+MODEL_CONCURRENCY_MIN = 1
+MODEL_CONCURRENCY_MAX = 1024
+MODEL_CONCURRENCY_OVERRIDE_MAX_BYTES = 65536
+MODEL_MAX_CONCURRENCY: int = _bounded_int_env(
+    "TALKIES_MODEL_MAX_CONCURRENCY",
+    1,
+    MODEL_CONCURRENCY_MIN,
+    MODEL_CONCURRENCY_MAX,
+)
+MODEL_CONCURRENCY_OVERRIDES_RAW: str = os.environ.get(
+    "TALKIES_MODEL_CONCURRENCY", ""
+).strip()
+if len(MODEL_CONCURRENCY_OVERRIDES_RAW.encode("utf-8")) > (
+    MODEL_CONCURRENCY_OVERRIDE_MAX_BYTES
+):
+    raise ValueError(
+        "TALKIES_MODEL_CONCURRENCY exceeds the 65536-byte configuration limit"
+    )
 STREAM_MAX_FRAME_BYTES: int = _bounded_int_env(
     "TALKIES_STREAM_MAX_FRAME_BYTES", 65536, 2, 16 * 1024 * 1024
 )
@@ -222,6 +240,46 @@ VALID_EXECUTORS = (
 )
 
 
+def _model_concurrency_overrides(model_ids: set[str]) -> dict[str, int]:
+    overrides: dict[str, int] = {}
+    if not MODEL_CONCURRENCY_OVERRIDES_RAW:
+        return overrides
+    for raw_pair in MODEL_CONCURRENCY_OVERRIDES_RAW.split(","):
+        pair = raw_pair.strip()
+        if not pair or pair.count("=") != 1:
+            raise ValueError(
+                "TALKIES_MODEL_CONCURRENCY must contain comma-separated "
+                "model-slug=limit pairs"
+            )
+        model_id, raw_limit = (part.strip() for part in pair.split("=", 1))
+        if not model_id or not raw_limit:
+            raise ValueError(
+                "TALKIES_MODEL_CONCURRENCY must contain non-empty "
+                "model-slug=limit pairs"
+            )
+        if model_id in overrides:
+            raise ValueError(f"TALKIES_MODEL_CONCURRENCY repeats model {model_id!r}")
+        if model_id not in model_ids:
+            raise ValueError(
+                "TALKIES_MODEL_CONCURRENCY references unknown or disabled "
+                f"model {model_id!r}"
+            )
+        try:
+            limit = int(raw_limit)
+        except ValueError as exc:
+            raise ValueError(
+                f"TALKIES_MODEL_CONCURRENCY limit for {model_id!r} "
+                f"is not an integer: {raw_limit!r}"
+            ) from exc
+        if not MODEL_CONCURRENCY_MIN <= limit <= MODEL_CONCURRENCY_MAX:
+            raise ValueError(
+                f"TALKIES_MODEL_CONCURRENCY limit for {model_id!r} must be "
+                f"between {MODEL_CONCURRENCY_MIN} and {MODEL_CONCURRENCY_MAX}"
+            )
+        overrides[model_id] = limit
+    return overrides
+
+
 def load_registry() -> dict[str, dict]:
     """Read models.json and return {model_id: {repo, executor, language?, ...}}."""
     if not MODELS_FILE.exists():
@@ -246,6 +304,17 @@ def load_registry() -> dict[str, dict]:
                 f"{MODELS_FILE}: model {model_id!r} executor={executor!r} "
                 f"must be one of {VALID_EXECUTORS}"
             )
+        configured_limit = entry.get("max_concurrency")
+        if configured_limit is not None and (
+            isinstance(configured_limit, bool)
+            or not isinstance(configured_limit, int)
+            or not MODEL_CONCURRENCY_MIN <= configured_limit <= MODEL_CONCURRENCY_MAX
+        ):
+            raise ValueError(
+                f"{MODELS_FILE}: model {model_id!r} max_concurrency must be "
+                f"an integer between {MODEL_CONCURRENCY_MIN} and "
+                f"{MODEL_CONCURRENCY_MAX}"
+            )
     if ENABLED_MODELS:
         missing = [s for s in ENABLED_MODELS if s not in models]
         if missing:
@@ -254,4 +323,14 @@ def load_registry() -> dict[str, dict]:
                 f"available in {MODELS_FILE}: {sorted(models)}"
             )
         models = {s: models[s] for s in ENABLED_MODELS}
-    return models
+    overrides = _model_concurrency_overrides(set(models))
+    normalized: dict[str, dict] = {}
+    for model_id, entry in models.items():
+        normalized_entry = dict(entry)
+        configured_limit = entry.get("max_concurrency")
+        normalized_entry["max_concurrency"] = overrides.get(
+            model_id,
+            configured_limit if configured_limit is not None else MODEL_MAX_CONCURRENCY,
+        )
+        normalized[model_id] = normalized_entry
+    return normalized

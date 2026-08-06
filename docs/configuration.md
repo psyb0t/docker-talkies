@@ -25,6 +25,8 @@ unsets it while fetching selected snapshots, then starts the application.
 | `TALKIES_MODEL_TTL` | `600` seconds | Idle backend eviction; `0` disables it |
 | `TALKIES_SWEEPER_INTERVAL` | `60` seconds | Idle-sweeper frequency |
 | `TALKIES_LOAD_TIMEOUT` | `300` seconds | Parsed configuration reserved for a model-load timeout; the current server does not apply it |
+| `TALKIES_MODEL_MAX_CONCURRENCY` | `1` | Fallback active inference requests per model, 1–1024 |
+| `TALKIES_MODEL_CONCURRENCY` | empty | Per-model overrides such as `model-a=2,model-b=1` |
 | `TALKIES_MAX_UPLOAD_BYTES` | `104857600` | Multipart transcription and file-stage upload cap |
 | `TALKIES_MAX_DOWNLOAD_BYTES` | `1073741824` | Remote `file_path` download cap |
 | `TALKIES_BLOCK_PRIVATE_DOWNLOADS` | `false` | Block private, loopback, link-local, multicast, and metadata URL targets |
@@ -54,6 +56,14 @@ Audio above the threshold enters VAD segmentation before backend transcription.
 
 Startup rejects a rolling-Whisper buffer that cannot hold one maximum PCM
 frame. Full protocol details are in [Streaming](streaming.md).
+
+`max_concurrency` may also be set on any model registry entry. Precedence is
+`TALKIES_MODEL_CONCURRENCY`, registry entry, then
+`TALKIES_MODEL_MAX_CONCURRENCY`. The limit counts WebSocket ASR, HTTP ASR, MCP
+ASR, buffered TTS, and streaming TTS together. Excess requests fail immediately
+with HTTP 429 or a WebSocket `connection_limit` error; Talkies does not build an
+unbounded inference queue. Invalid, duplicate, unknown, or disabled model slugs
+in the override fail startup.
 
 ## Logging
 

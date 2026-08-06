@@ -16,6 +16,12 @@ ML runtime dependencies, so unit tests stub the ML backends.
 | `make test-streaming-custom-cuda` | Real CUDA Sherpa WebSocket and HTTP E2E |
 | `make test-integration` | CUDA integration suite on a GPU-capable host |
 
+The CUDA image installs the upstream parakeet.cpp v0.5.0 precompiled CUDA 12
+shared-library bundle. `Dockerfile.cuda` pins both the release URL and its
+published SHA-256 digest, verifies the archive before extraction, and keeps the
+bundle's CUDA 12.9 runtime libraries isolated under `/opt/parakeet`. No local
+parakeet.cpp compiler stage is required.
+
 The two streaming tests run host-side because they start production images and
 connect to their HTTP/WebSocket port. The custom suite uses the pinned registry
 in `tests/integration/`.

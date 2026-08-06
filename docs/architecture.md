@@ -61,9 +61,12 @@ unloads loaded sibling models. The idle sweeper unloads unused backends after
 `TALKIES_MODEL_TTL` unless it is zero. This keeps one process usable on limited
 memory, but clients should expect a cold-load delay after eviction.
 
-Active live-ASR sessions are special: the server reserves one model slug for
-all active streams and refuses a conflicting model operation with HTTP 409.
-The reservation is released in every normal and error shutdown path.
+One admission controller counts active inference by model across HTTP ASR, MCP
+ASR, live WebSocket ASR, buffered TTS, and streaming TTS. It unloads siblings
+before the first admitted request, refuses conflicting model operations with
+HTTP 409, and rejects work above `max_concurrency` with HTTP 429. Reservations
+release in every normal, cancellation, disconnect, iterator-close, and error
+path. The independent global WebSocket cap is applied to live ASR as well.
 
 ## Data boundaries
 

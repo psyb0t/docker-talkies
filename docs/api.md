@@ -8,7 +8,7 @@ Talkies serves HTTP on port 8000. When `TALKIES_AUTH_TOKEN` is set, send
 | Route | Result |
 |---|---|
 | `GET /healthz` | `{"ok": true, "device": "...", "models": ["..."]}` |
-| `GET /v1/models` | OpenAI-style list of enabled models, with `modality` set to `asr` or `tts` |
+| `GET /v1/models` | OpenAI-style enabled models with `modality` and `max_concurrency` |
 | `GET /v1/audio/voices` | `{"voices": [...]}` with `voice`, `model`, `default`, and optional `origin` |
 
 Voice names are scoped to their model. For Qwen3 base voice-cloning models,
@@ -59,6 +59,10 @@ file requests are decoded through a short-lived native stream after
 normalization; see [Streaming](streaming.md#sherpa-onnx-and-vosk) for the
 engine-specific behavior and [Models](models.md#sherpa-onnx-and-vosk-choices)
 for selectable slugs.
+
+If the model has no free inference slot, transcription and speech requests
+return HTTP 429. A request for a different model while inference is active
+returns HTTP 409 rather than evicting the active backend.
 
 ## Speech
 

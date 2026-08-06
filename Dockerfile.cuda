@@ -75,44 +75,29 @@ RUN --mount=type=cache,target=/root/.cache/uv \
         -r requirements-heavy-cuda.txt
 
 # -----------------------------------------------------------------------------
-# parakeet.cpp build stage — produces libparakeet.so used by the parakeet_cpp
-# backend (NVIDIA Parakeet TDT/CTC/RNNT + Nemotron-3.5-ASR via ggml/C++). MIT.
-# Pinned by full commit SHA (tags are mutable on this repo). Built CPU-only
-# (no -DPARAKEET_GGML_CUDA) so the same .so works in both CPU and CUDA images
-# without dragging the CUDA toolchain through the build context. Nemotron-3.5
-# runs ~2-3x faster on CPU here than NeMo's PyTorch path anyway; if you want
-# GPU offload for parakeet.cpp specifically, rebuild this stage on a CUDA
-# devel base with -DPARAKEET_GGML_CUDA=ON + a pinned CUDA_ARCHS list.
-FROM python:3.12-slim-bookworm@sha256:d193c6f51a7dbd10395d6328de3a7edb0516fb0608ca138036576f574c3e07d2 AS parakeet-builder
-
-ARG PARAKEET_CPP_SHA=e270af73b94c9a5c37ec516230219ed4580e1db6
-
-RUN apt-get update && apt-get install -y --no-install-recommends \
-        build-essential \
-        cmake \
-        git \
-        ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
-
-WORKDIR /src
-RUN git clone https://github.com/mudler/parakeet.cpp /src/parakeet.cpp \
-    && cd /src/parakeet.cpp \
-    && git checkout "${PARAKEET_CPP_SHA}" \
-    && git submodule update --init --recursive
-
-WORKDIR /src/parakeet.cpp
-RUN cmake -B build \
-        -DPARAKEET_SHARED=ON \
-        -DPARAKEET_BUILD_CLI=ON \
-        -DPARAKEET_BUILD_TESTS=OFF \
-        -DGGML_NATIVE=OFF \
-    && cmake --build build -j "$(nproc)" \
-    && mkdir -p /out/lib /out/bin /out/include \
-    && cp -P build/libparakeet.so* /out/lib/ \
-    && cp -P build/third_party/ggml/src/libggml*.so* /out/lib/ \
-    && cp build/examples/cli/parakeet-cli /out/bin/ \
-    && cp include/parakeet_capi.h /out/include/ \
-    && cp include/parakeet.h /out/include/
+# Precompiled parakeet.cpp shared C API used by the parakeet_cpp backend
+# (NVIDIA Parakeet TDT/CTC/RNNT + Nemotron-3.5-ASR via ggml/C++). The upstream
+# CUDA 12 bundle was built with CUDA 12.9 and includes its matching cudart and
+# cuBLAS libraries beside libparakeet.so. The published digest pins its bytes.
+ARG PARAKEET_CPP_BUNDLE_URL="https://github.com/mudler/parakeet.cpp/releases/download/v0.5.0/parakeet-v0.5.0-lib-linux-cuda12-x64.tar.gz"
+ARG PARAKEET_CPP_BUNDLE_FILE="parakeet-v0.5.0-lib-linux-cuda12-x64.tar.gz"
+ARG PARAKEET_CPP_BUNDLE_SHA256="7c3a151793050436386b2699ad025ae96713f34e8a070a9f2029c39d57162ec1"
+RUN mkdir -p /opt/parakeet \
+    && curl --fail --location --retry 3 --retry-delay 2 \
+        "${PARAKEET_CPP_BUNDLE_URL}" \
+        --output "/tmp/${PARAKEET_CPP_BUNDLE_FILE}" \
+    && echo "${PARAKEET_CPP_BUNDLE_SHA256}  /tmp/${PARAKEET_CPP_BUNDLE_FILE}" \
+        | sha256sum --check \
+    && tar --extract --gzip \
+        --file "/tmp/${PARAKEET_CPP_BUNDLE_FILE}" \
+        --directory /opt/parakeet \
+        --strip-components=1 \
+        --no-same-owner \
+        --no-same-permissions \
+    && test -f /opt/parakeet/libparakeet.so \
+    && test -f /opt/parakeet/parakeet_capi.h \
+    && test -f /opt/parakeet/LICENSE \
+    && rm "/tmp/${PARAKEET_CPP_BUNDLE_FILE}"
 
 # -----------------------------------------------------------------------------
 # Runtime — uses CUDA 12.6 runtime on ubuntu24.04 (python3.12 in base repos).
@@ -153,14 +138,11 @@ WORKDIR /app
 
 COPY --from=builder /opt/venv /opt/venv
 
-# parakeet.cpp shared lib + ggml runtime + CLI for the parakeet_cpp ASR backend.
-# libparakeet.so is dlopen'd via ctypes from src/talkies/models/parakeet_cpp.py;
-# libggml*.so are transitive deps the loader resolves via LD_LIBRARY_PATH;
-# parakeet-cli is shipped for ops debugging (manual transcription).
-COPY --from=parakeet-builder /out/lib/ /opt/parakeet/lib/
-COPY --from=parakeet-builder /out/bin/parakeet-cli /usr/local/bin/parakeet-cli
-ENV LD_LIBRARY_PATH="/opt/parakeet/lib:${LD_LIBRARY_PATH}"
-ENV TALKIES_PARAKEET_CPP_LIB=/opt/parakeet/lib/libparakeet.so
+# The precompiled shared library folds ggml into libparakeet.so and carries
+# matching CUDA runtime libraries beside it. Keep the bundle isolated so its
+# CUDA libraries do not replace the Python ML stack's globally.
+COPY --from=builder /opt/parakeet/ /opt/parakeet/
+ENV TALKIES_PARAKEET_CPP_LIB=/opt/parakeet/libparakeet.so
 
 COPY --chown=talkies:talkies src ./src
 COPY --chown=talkies:talkies pyproject.toml ./

@@ -23,6 +23,8 @@ def _reload_config(monkeypatch, models_path: Path, **env: str):
     for var in (
         "TALKIES_ENABLED_MODELS",
         "TALKIES_PRELOAD",
+        "TALKIES_MODEL_MAX_CONCURRENCY",
+        "TALKIES_MODEL_CONCURRENCY",
         "TALKIES_STREAM_MAX_CONNECTIONS",
         "TALKIES_STREAM_MAX_FRAME_BYTES",
         "TALKIES_STREAM_MAX_BUFFER_SECONDS",
@@ -162,6 +164,129 @@ def test_load_registry_missing_repo_raises(monkeypatch, tmp_path):
     cfg = _reload_config(monkeypatch, p)
     with pytest.raises(ValueError, match="missing 'repo'"):
         cfg.load_registry()
+
+
+def test_model_concurrency_uses_fallback_registry_and_override_precedence(
+    monkeypatch,
+    tmp_path,
+):
+    registry_path = tmp_path / "models.json"
+    registry_path.write_text(
+        json.dumps(
+            {
+                "models": {
+                    "fallback": {"repo": "example/fallback"},
+                    "registry": {
+                        "repo": "example/registry",
+                        "max_concurrency": 2,
+                    },
+                }
+            }
+        )
+    )
+    cfg = _reload_config(
+        monkeypatch,
+        registry_path,
+        TALKIES_MODEL_MAX_CONCURRENCY="3",
+        TALKIES_MODEL_CONCURRENCY="registry=4",
+    )
+
+    registry = cfg.load_registry()
+
+    assert registry["fallback"]["max_concurrency"] == 3
+    assert registry["registry"]["max_concurrency"] == 4
+
+
+@pytest.mark.parametrize("value", [True, 0, -1, 1025, 1.5, "2"])
+def test_registry_rejects_invalid_model_concurrency(
+    monkeypatch,
+    tmp_path,
+    value,
+):
+    registry_path = tmp_path / "models.json"
+    registry_path.write_text(
+        json.dumps(
+            {
+                "models": {
+                    "bad-model": {
+                        "repo": "example/bad-model",
+                        "max_concurrency": value,
+                    }
+                }
+            }
+        )
+    )
+    cfg = _reload_config(monkeypatch, registry_path)
+
+    with pytest.raises(ValueError, match="bad-model.*max_concurrency"):
+        cfg.load_registry()
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "missing",
+        "=2",
+        "whisper-tiny=",
+        "whisper-tiny=two",
+        "whisper-tiny=0",
+        "whisper-tiny=1025",
+        "whisper-tiny=2,whisper-tiny=3",
+        "missing-model=2",
+        "whisper-tiny=2=3",
+    ],
+)
+def test_model_concurrency_override_rejects_invalid_values(
+    monkeypatch,
+    fake_registry,
+    value,
+):
+    cfg = _reload_config(
+        monkeypatch,
+        fake_registry,
+        TALKIES_MODEL_CONCURRENCY=value,
+    )
+
+    with pytest.raises(ValueError, match="TALKIES_MODEL_CONCURRENCY"):
+        cfg.load_registry()
+
+
+def test_disabled_model_cannot_be_overridden(monkeypatch, fake_registry):
+    cfg = _reload_config(
+        monkeypatch,
+        fake_registry,
+        TALKIES_ENABLED_MODELS="whisper-tiny",
+        TALKIES_MODEL_CONCURRENCY="parakeet-mini=2",
+    )
+
+    with pytest.raises(ValueError, match="unknown or disabled"):
+        cfg.load_registry()
+
+
+@pytest.mark.parametrize("value", ["0", "1025", "not-a-number"])
+def test_model_concurrency_fallback_rejects_invalid_values(
+    monkeypatch,
+    fake_registry,
+    value,
+):
+    monkeypatch.setenv("TALKIES_MODELS_FILE", str(fake_registry))
+    monkeypatch.setenv("TALKIES_MODEL_MAX_CONCURRENCY", value)
+    sys.modules.pop("talkies.config", None)
+
+    with pytest.raises(ValueError, match="TALKIES_MODEL_MAX_CONCURRENCY"):
+        importlib.import_module("talkies.config")
+
+
+def test_model_concurrency_override_rejects_oversized_text(
+    monkeypatch,
+    fake_registry,
+):
+    monkeypatch.setenv("TALKIES_MODELS_FILE", str(fake_registry))
+    monkeypatch.setenv("TALKIES_MODEL_CONCURRENCY", "x" * 65537)
+    sys.modules.pop("talkies.config", None)
+
+    with pytest.raises(ValueError, match="65536-byte"):
+        importlib.import_module("talkies.config")
 
 
 # ── duration parser smoke ─────────────────────────────────────────────────────

@@ -11,30 +11,27 @@ from pathlib import Path
 
 import pytest
 
-
 pytest.importorskip("numpy")
 
-from talkies.models.kokoro_nvidia import (  # noqa: E402
-    KokoroNvidiaBackend,
+from talkies.models.kokoro_nvidia import (
+    _PREFIX_TO_LANG,  # noqa: E402
     VOICE_DIM,
     VOICE_TOKEN_LEN,
-    _PREFIX_TO_LANG,
+    KokoroNvidiaBackend,
     _load_voices,
     _parse_tokens,
     _split_phonemes,
 )
 
 
-def _write_voices_pair(
-    tmp_path: Path, names: list[str]
-) -> tuple[Path, Path]:
+def _write_voices_pair(tmp_path: Path, names: list[str]) -> tuple[Path, Path]:
     """Create a tiny voices.bin + voices.txt fixture pair matching the
     NVIDIA layout (raw f32 packed by voice, index→name txt)."""
     import numpy as np
 
-    arr = np.arange(
-        len(names) * VOICE_TOKEN_LEN * VOICE_DIM, dtype=np.float32
-    ).reshape(len(names), VOICE_TOKEN_LEN, VOICE_DIM)
+    arr = np.arange(len(names) * VOICE_TOKEN_LEN * VOICE_DIM, dtype=np.float32).reshape(
+        len(names), VOICE_TOKEN_LEN, VOICE_DIM
+    )
     bin_path = tmp_path / "voices.bin"
     arr.tofile(str(bin_path))
     txt_path = tmp_path / "voices.txt"

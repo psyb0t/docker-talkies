@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import importlib
 import json
 import sys
@@ -18,6 +19,13 @@ from talkies.asr_streaming import (
     StreamConfig,
     TranscriptEvent,
 )
+
+_MODELS_PACKAGE = types.ModuleType("talkies.models")
+_MODELS_PACKAGE.__path__ = [
+    str(Path(__file__).resolve().parents[1] / "src" / "talkies" / "models")
+]
+sys.modules.setdefault("talkies.models", _MODELS_PACKAGE)
+
 from talkies.models.base import TranscribeResult
 
 
@@ -94,6 +102,33 @@ class _FakeBackend:
 
     def loaded(self) -> bool:
         return True
+
+    def last_used_secs_ago(self) -> float:
+        return 0.0
+
+
+class _FakeTTSBackend:
+    repo = "example/tts-model"
+    sample_rate = 24000
+
+    def default_voice(self) -> str:
+        return "voice"
+
+    def voices(self) -> list[str]:
+        return ["voice"]
+
+    async def synthesize(self, *args, **kwargs):
+        return types.SimpleNamespace(pcm_int16=b"pcm", sample_rate=self.sample_rate)
+
+    async def synthesize_stream(self, *args, **kwargs):
+        yield b"chunk-one"
+        yield b"chunk-two"
+
+    async def unload(self) -> None:
+        return None
+
+    def loaded(self) -> bool:
+        return False
 
     def last_used_secs_ago(self) -> float:
         return 0.0
@@ -280,6 +315,188 @@ def test_file_transcription_accepts_a_streaming_asr_backend(
             "with_timestamps": False,
         }
     ]
+    assert server._active_request_count("stream-model") == 0
+
+
+def test_model_admission_allows_two_and_rejects_third(streaming_server) -> None:
+    server, _ = streaming_server
+    server.REGISTRY["stream-model"]["max_concurrency"] = 2
+
+    async def scenario() -> None:
+        await server._reserve_model("stream-model")
+        await server._reserve_model("stream-model", streaming=True)
+        assert server._active_request_count("stream-model") == 2
+        assert server._active_stream_count("stream-model") == 1
+        with pytest.raises(server.ModelAdmissionError) as raised:
+            await server._reserve_model("stream-model")
+        assert raised.value.code == "model_capacity"
+        assert raised.value.status_code == 429
+        await server._release_model("stream-model", streaming=True)
+        await server._release_model("stream-model")
+        assert server._active_request_count("stream-model") == 0
+        assert server._active_stream_count("stream-model") == 0
+
+    asyncio.run(scenario())
+
+
+def test_model_admission_blocks_sibling_without_eviction(streaming_server) -> None:
+    server, _ = streaming_server
+    sibling = _FakeBackend()
+    server.BACKENDS["sibling"] = sibling
+    server.REGISTRY["sibling"] = {
+        "repo": sibling.repo,
+        "executor": "vosk",
+        "max_concurrency": 1,
+    }
+
+    async def scenario() -> None:
+        await server._reserve_model("stream-model")
+        sibling.unload_count = 0
+        with pytest.raises(server.ModelAdmissionError) as raised:
+            await server._reserve_model("sibling")
+        assert raised.value.code == "model_busy"
+        assert sibling.unload_count == 0
+        await server._release_model("stream-model")
+
+    try:
+        asyncio.run(scenario())
+    finally:
+        server.BACKENDS.pop("sibling", None)
+        server.REGISTRY.pop("sibling", None)
+
+
+def test_http_transcription_returns_429_at_model_capacity(
+    streaming_server,
+) -> None:
+    server, backend = streaming_server
+    server._active_requests["stream-model"] = 1
+
+    try:
+        with TestClient(server.app) as client:
+            response = client.post(
+                "/v1/audio/transcriptions",
+                data={"model": "stream-model", "response_format": "json"},
+                files={"file": ("audio.wav", b"audio", "audio/wav")},
+            )
+    finally:
+        server._active_requests.clear()
+
+    assert response.status_code == 429
+    assert response.json() == {"detail": "model concurrency limit reached (1)"}
+    assert backend.transcribe_calls == []
+
+
+def test_pipeline_failure_releases_model_capacity(
+    streaming_server,
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    server, backend = streaming_server
+    normalized_wav = tmp_path / "normalized.wav"
+    normalized_wav.write_bytes(b"not-a-real-wav")
+    monkeypatch.setattr(
+        server,
+        "to_wav_16k_mono",
+        lambda raw, original_name: str(normalized_wav),
+    )
+    monkeypatch.setattr(server, "_wav_duration_seconds", lambda path: None)
+
+    async def fail_transcribe(*args, **kwargs):
+        raise RuntimeError("backend failed")
+
+    backend.transcribe = fail_transcribe
+
+    with pytest.raises(RuntimeError, match="backend failed"):
+        asyncio.run(
+            server.run_transcription_pipeline(
+                raw=b"audio",
+                original_name="audio.wav",
+                model="stream-model",
+                language=None,
+                response_format="json",
+                do_diarize=False,
+            )
+        )
+
+    assert server._active_request_count("stream-model") == 0
+
+
+def test_buffered_tts_releases_model_capacity(
+    streaming_server,
+    monkeypatch,
+) -> None:
+    server, _ = streaming_server
+    backend = _FakeTTSBackend()
+    server.BACKENDS["tts-model"] = backend
+    server.REGISTRY["tts-model"] = {
+        "repo": backend.repo,
+        "executor": "kokoro",
+        "max_concurrency": 1,
+    }
+    monkeypatch.setattr(
+        server, "is_tts_backend", lambda candidate: candidate is backend
+    )
+
+    async def encode_audio(pcm, sample_rate, fmt):
+        assert pcm == b"pcm"
+        assert sample_rate == 24000
+        assert fmt == "wav"
+        return b"encoded", "audio/wav"
+
+    monkeypatch.setattr(server.tts_mod, "encode_audio", encode_audio)
+    body = server.SpeechRequest(
+        model="tts-model",
+        input="hello",
+        voice="voice",
+        response_format="wav",
+    )
+
+    try:
+        response = asyncio.run(server.speech(body))
+    finally:
+        server.BACKENDS.pop("tts-model", None)
+        server.REGISTRY.pop("tts-model", None)
+
+    assert response.body == b"encoded"
+    assert server._active_request_count("tts-model") == 0
+
+
+def test_streaming_tts_holds_capacity_until_iterator_finishes(
+    streaming_server,
+    monkeypatch,
+) -> None:
+    server, _ = streaming_server
+    backend = _FakeTTSBackend()
+    server.BACKENDS["tts-model"] = backend
+    server.REGISTRY["tts-model"] = {
+        "repo": backend.repo,
+        "executor": "qwen3_tts",
+        "max_concurrency": 1,
+    }
+    monkeypatch.setattr(
+        server, "is_tts_backend", lambda candidate: candidate is backend
+    )
+    body = server.SpeechRequest(
+        model="tts-model",
+        input="hello",
+        voice="voice",
+        response_format="pcm",
+    )
+
+    async def scenario() -> bytes:
+        response = await server.speech(body)
+        assert server._active_request_count("tts-model") == 1
+        chunks = [chunk async for chunk in response.body_iterator]
+        assert server._active_request_count("tts-model") == 0
+        return b"".join(chunks)
+
+    try:
+        audio = asyncio.run(scenario())
+    finally:
+        server.BACKENDS.pop("tts-model", None)
+        server.REGISTRY.pop("tts-model", None)
+
+    assert audio == b"chunk-onechunk-two"
 
 
 def test_stream_suppresses_empty_native_partial(streaming_server) -> None:
@@ -418,6 +635,104 @@ def test_connection_limit_and_unload_conflict(streaming_server) -> None:
 
             first.send_json({"type": "cancel"})
             first.receive_json()
+
+
+def test_manual_unload_drains_cuda_memory(streaming_server, monkeypatch) -> None:
+    server, backend = streaming_server
+    drain_calls = 0
+
+    async def fake_drain() -> None:
+        nonlocal drain_calls
+        drain_calls += 1
+
+    monkeypatch.setattr(server, "_wait_for_gpu_drain", fake_drain)
+
+    with TestClient(server.app) as client:
+        response = client.delete("/api/ps/stream-model")
+
+    assert response.status_code == 200
+    assert backend.unload_count == 1
+    assert drain_calls == 1
+
+
+def test_unload_all_drains_cuda_memory_once(streaming_server, monkeypatch) -> None:
+    server, backend = streaming_server
+    drain_calls = 0
+
+    async def fake_drain() -> None:
+        nonlocal drain_calls
+        drain_calls += 1
+
+    monkeypatch.setattr(server, "_wait_for_gpu_drain", fake_drain)
+
+    with TestClient(server.app) as client:
+        response = client.post("/unload")
+
+    assert response.status_code == 200
+    assert response.json() == {"unloaded": ["stream-model"]}
+    assert backend.unload_count == 1
+    assert drain_calls == 1
+
+
+@pytest.mark.parametrize(
+    ("initialized", "expected_calls"),
+    [
+        (False, []),
+        (True, ["synchronize", "empty_cache", "ipc_collect"]),
+    ],
+)
+def test_gpu_drain_does_not_initialize_an_unused_torch_context(
+    streaming_server,
+    monkeypatch,
+    initialized: bool,
+    expected_calls: list[str],
+) -> None:
+    server, _ = streaming_server
+    calls: list[str] = []
+    fake_cuda = types.SimpleNamespace(
+        is_available=lambda: True,
+        is_initialized=lambda: initialized,
+        synchronize=lambda: calls.append("synchronize"),
+        empty_cache=lambda: calls.append("empty_cache"),
+        ipc_collect=lambda: calls.append("ipc_collect"),
+    )
+    monkeypatch.setitem(sys.modules, "torch", types.SimpleNamespace(cuda=fake_cuda))
+
+    asyncio.run(server._wait_for_gpu_drain())
+
+    assert calls == expected_calls
+
+
+def test_two_websockets_are_admitted_and_third_is_rejected(
+    streaming_server,
+) -> None:
+    server, _ = streaming_server
+    server.REGISTRY["stream-model"]["max_concurrency"] = 2
+    server.config.STREAM_MAX_CONNECTIONS = 3
+
+    with TestClient(server.app) as client:
+        with client.websocket_connect("/v1/audio/transcriptions/stream") as first:
+            first.send_json(_start_message())
+            assert first.receive_json()["type"] == "ready"
+            with client.websocket_connect("/v1/audio/transcriptions/stream") as second:
+                second.send_json(_start_message())
+                assert second.receive_json()["type"] == "ready"
+                with client.websocket_connect(
+                    "/v1/audio/transcriptions/stream"
+                ) as third:
+                    third.send_json(_start_message())
+                    error = third.receive_json()
+                assert error == {
+                    "type": "error",
+                    "code": "connection_limit",
+                    "detail": "model concurrency limit reached (2)",
+                }
+                second.send_json({"type": "cancel"})
+                second.receive_json()
+            first.send_json({"type": "cancel"})
+            first.receive_json()
+
+    assert server._active_request_count("stream-model") == 0
 
 
 def test_main_bounds_uvicorn_websocket_ingress(

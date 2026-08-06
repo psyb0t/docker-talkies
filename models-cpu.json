@@ -19,6 +19,7 @@
     "nemotron-3.5-asr-0.6b": {
       "repo": "mudler/parakeet-cpp-gguf",
       "executor": "parakeet_cpp",
+      "max_concurrency": 2,
       "gguf_file": "nemotron-3.5-asr-streaming-0.6b-q8_0.gguf",
       "default_source_lang": "auto",
       "default_target_lang": "en",

@@ -78,6 +78,13 @@ Container binds `0.0.0.0:8000` unconditionally. Control network exposure at `doc
 | `TALKIES_MODELS_FILE` | `/app/models.json` | Path to the model registry JSON. Override to ship a custom subset. The CPU image copies `models-cpu.json` to this path; the CUDA image copies `models.json` here. |
 | `TALKIES_ENABLED_MODELS` | (empty = all from `models.json`) | Comma-separated slug whitelist. Restricts both the boot-time snapshot download and the queryable surface of `/v1/models`. Unknown slugs fail fast on startup. |
 | `TALKIES_PRELOAD` | (empty) | Comma-separated slugs to load into RAM/VRAM at boot, before uvicorn accepts requests. Skips cold-load on first transcription. Must be a subset of `TALKIES_ENABLED_MODELS`. |
+| `TALKIES_MODEL_MAX_CONCURRENCY` | `1` | Fallback number of simultaneous inference requests admitted per model across HTTP, MCP, WebSocket ASR, buffered TTS, and streaming TTS. Registry `max_concurrency` values take precedence. |
+| `TALKIES_MODEL_CONCURRENCY` | (empty) | Comma-separated `model-slug=limit` overrides, for example `nemotron-3.5-asr-0.6b=2,kokoro-82m=4`. Unknown, disabled, duplicate, malformed, or out-of-range entries fail at startup. |
+
+Each registry model may define `max_concurrency` from 1 through 1024. The
+bundled Nemotron entry defaults to two in both images. Only one model may own
+active inference slots at a time, which prevents sibling model eviction while
+a request is still using its backend.
 
 ### Data dir
 

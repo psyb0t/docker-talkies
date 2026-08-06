@@ -20,6 +20,7 @@ both speaches and this service.
 from __future__ import annotations
 
 import asyncio
+import gc
 import logging
 import mimetypes
 import os
@@ -70,6 +71,7 @@ from .audio import (
     to_wav_16k_split_lr,
 )
 from .auth import BearerAuthMiddleware
+from .errors import ModelAdmissionError
 from .logging import configure as configure_logging
 from .mcp_server import build_mcp_server
 from .models import (
@@ -82,31 +84,30 @@ from .models.base import TranscribeResult
 
 
 async def _wait_for_gpu_drain() -> None:
-    """Block until in-flight CUDA deallocations have actually completed.
+    """Collect backend references and release initialized Torch CUDA caches.
 
-    Each backend's ``unload()`` calls ``torch.cuda.empty_cache()`` and
-    returns. That call hands the work to the CUDA driver which finishes
-    asynchronously — the Python side gets control back BEFORE the GPU
-    blocks are actually returned to the allocator pool. On a memory-tight
-    host the next ``backend.get_model()`` then races against the still-
-    freeing buffers and the load OOMs (typical failure: ctranslate2 +
-    NeMo back-to-back on a single GPU).
+    Native backends release their device allocations in ``unload()``. Python
+    backends can leave tensors awaiting collection and cached blocks in the
+    Torch allocator. Collect twice, synchronize queued CUDA work, clear the
+    allocator cache, and collect CUDA IPC handles before another model loads.
 
-    A single ``torch.cuda.synchronize()`` waits for the device to finish
-    every queued op, including the dealloc work, before we return. Cheap
-    when the device is already idle (microseconds); the right barrier
-    otherwise. Importing torch lazily so non-CUDA images stay light.
+    Do not call into Torch unless its CUDA context is already initialized.
+    Initializing Torch solely during cleanup would itself reserve GPU memory
+    after unloading a native-only backend such as parakeet.cpp.
     """
 
     def _sync() -> None:
+        gc.collect()
+        gc.collect()
         try:
             import torch
         except ImportError:
             return
-        if not torch.cuda.is_available():
+        if not torch.cuda.is_available() or not torch.cuda.is_initialized():
             return
         torch.cuda.synchronize()
         torch.cuda.empty_cache()
+        torch.cuda.ipc_collect()
 
     await asyncio.to_thread(_sync)
 
@@ -141,7 +142,8 @@ _STREAM_CLOSE_LIMIT = 4429
 _STREAM_CLOSE_INTERNAL_ERROR = 4500
 _STREAM_MAX_BUFFER_FRAMES = 256
 _STREAM_MAX_PENDING_MESSAGES = 1
-_stream_lock = asyncio.Lock()
+_model_lock = asyncio.Lock()
+_active_requests: dict[str, int] = {}
 _active_streams: dict[str, int] = {}
 
 
@@ -151,22 +153,37 @@ def _active_stream_count(model_id: str | None = None) -> int:
     return _active_streams.get(model_id, 0)
 
 
-async def _reserve_stream(model_id: str) -> None:
-    async with _stream_lock:
-        if _active_stream_count() >= config.STREAM_MAX_CONNECTIONS:
-            raise StreamingProtocolError(
+def _active_request_count(model_id: str | None = None) -> int:
+    if model_id is None:
+        return sum(_active_requests.values())
+    return _active_requests.get(model_id, 0)
+
+
+async def _reserve_model(model_id: str, *, streaming: bool = False) -> None:
+    async with _model_lock:
+        if streaming and _active_stream_count() >= config.STREAM_MAX_CONNECTIONS:
+            raise ModelAdmissionError(
                 "connection_limit",
                 "stream connection limit reached",
+                429,
             )
         active_siblings = [
             sibling_id
-            for sibling_id, count in _active_streams.items()
+            for sibling_id, count in _active_requests.items()
             if sibling_id != model_id and count > 0
         ]
         if active_siblings:
-            raise StreamingProtocolError(
+            raise ModelAdmissionError(
                 "model_busy",
-                "another model has active streaming sessions",
+                "another model has active inference requests",
+                409,
+            )
+        limit = int(REGISTRY[model_id]["max_concurrency"])
+        if _active_request_count(model_id) >= limit:
+            raise ModelAdmissionError(
+                "connection_limit" if streaming else "model_capacity",
+                f"model concurrency limit reached ({limit})",
+                429,
             )
         siblings = [
             backend
@@ -179,53 +196,25 @@ async def _reserve_stream(model_id: str) -> None:
                 return_exceptions=False,
             )
             await _wait_for_gpu_drain()
-        _active_streams[model_id] = _active_stream_count(model_id) + 1
+        _active_requests[model_id] = _active_request_count(model_id) + 1
+        if streaming:
+            _active_streams[model_id] = _active_stream_count(model_id) + 1
 
 
-async def _release_stream(model_id: str) -> None:
-    async with _stream_lock:
-        remaining = _active_stream_count(model_id) - 1
-        if remaining > 0:
-            _active_streams[model_id] = remaining
+async def _release_model(model_id: str, *, streaming: bool = False) -> None:
+    async with _model_lock:
+        request_remaining = _active_request_count(model_id) - 1
+        if request_remaining > 0:
+            _active_requests[model_id] = request_remaining
+        else:
+            _active_requests.pop(model_id, None)
+        if not streaming:
             return
-        _active_streams.pop(model_id, None)
-
-
-async def _evict_siblings(model_id: str) -> None:
-    async with _stream_lock:
-        active_siblings = [
-            sibling_id
-            for sibling_id, count in _active_streams.items()
-            if sibling_id != model_id and count > 0
-        ]
-        if active_siblings:
-            raise HTTPException(
-                status_code=409,
-                detail="another model has active streaming sessions",
-            )
-        siblings = [
-            backend
-            for sibling_id, backend in BACKENDS.items()
-            if sibling_id != model_id and backend.loaded()
-        ]
-        if not siblings:
-            return
-        log.info(
-            "evicting sibling backends",
-            extra={
-                "model_id": model_id,
-                "siblings": [
-                    sibling_id
-                    for sibling_id, backend in BACKENDS.items()
-                    if sibling_id != model_id and backend.loaded()
-                ],
-            },
-        )
-        await asyncio.gather(
-            *(backend.unload() for backend in siblings),
-            return_exceptions=False,
-        )
-        await _wait_for_gpu_drain()
+        stream_remaining = _active_stream_count(model_id) - 1
+        if stream_remaining > 0:
+            _active_streams[model_id] = stream_remaining
+        else:
+            _active_streams.pop(model_id, None)
 
 
 async def _idle_sweeper() -> None:
@@ -251,10 +240,11 @@ async def _idle_sweeper() -> None:
                     ttl,
                 )
                 try:
-                    async with _stream_lock:
-                        if _active_stream_count(model_id):
+                    async with _model_lock:
+                        if _active_request_count(model_id):
                             continue
                         await backend.unload()
+                        await _wait_for_gpu_drain()
                 except Exception:  # noqa: BLE001
                     log.exception("idle sweeper: unload %s failed", model_id)
         except asyncio.CancelledError:
@@ -375,6 +365,7 @@ def list_models() -> dict[str, Any]:
                 "object": "model",
                 "owned_by": "talkies",
                 "modality": _modality_of(mid),
+                "max_concurrency": REGISTRY[mid]["max_concurrency"],
             }
             for mid in BACKENDS.keys()
         ],
@@ -428,6 +419,8 @@ def list_loaded() -> dict[str, Any]:
                 "repo": BACKENDS[mid].repo,
                 "loaded": BACKENDS[mid].loaded(),
                 "idle_seconds": BACKENDS[mid].last_used_secs_ago(),
+                "active_requests": _active_request_count(mid),
+                "max_concurrency": REGISTRY[mid]["max_concurrency"],
             }
             for mid in BACKENDS.keys()
             if BACKENDS[mid].loaded()
@@ -547,7 +540,7 @@ async def transcribe_stream(websocket: WebSocket) -> None:
             )
             return
 
-        await _reserve_stream(stream_config.model)
+        await _reserve_model(stream_config.model, streaming=True)
         reserved = True
         session = await _start_streaming_backend(backend, stream_config)
         await websocket.send_json(
@@ -640,7 +633,7 @@ async def transcribe_stream(websocket: WebSocket) -> None:
             "stream timed out waiting for client data",
             _STREAM_CLOSE_IDLE_TIMEOUT,
         )
-    except StreamingProtocolError as exc:
+    except (StreamingProtocolError, ModelAdmissionError) as exc:
         if session is not None:
             await session.cancel()
         close_code = _STREAM_CLOSE_PROTOCOL_ERROR
@@ -671,7 +664,7 @@ async def transcribe_stream(websocket: WebSocket) -> None:
         if session is not None:
             await session.close()
         if reserved and stream_config is not None:
-            await _release_stream(stream_config.model)
+            await _release_model(stream_config.model, streaming=True)
 
 
 @app.delete("/api/ps/{model_id:path}")
@@ -682,23 +675,24 @@ async def unload_one(model_id: str) -> JSONResponse:
         return JSONResponse({"detail": f"unknown model {decoded!r}"}, status_code=404)
     if not backend.loaded():
         return JSONResponse({"detail": "not loaded"}, status_code=404)
-    async with _stream_lock:
-        if _active_stream_count(decoded):
+    async with _model_lock:
+        if _active_request_count(decoded):
             return JSONResponse(
-                {"detail": "model has active streaming sessions"},
+                {"detail": "model has active inference requests"},
                 status_code=409,
             )
         await backend.unload()
+        await _wait_for_gpu_drain()
     return JSONResponse({"unloaded": decoded}, status_code=200)
 
 
 @app.post("/unload")
 async def unload_all() -> dict[str, Any]:
-    async with _stream_lock:
-        if _active_stream_count():
+    async with _model_lock:
+        if _active_request_count():
             raise HTTPException(
                 status_code=409,
-                detail="models have active streaming sessions",
+                detail="models have active inference requests",
             )
         unloaded = []
         for model_id, backend in BACKENDS.items():
@@ -709,6 +703,8 @@ async def unload_all() -> dict[str, Any]:
                 unloaded.append(model_id)
             except Exception:  # noqa: BLE001
                 log.exception("unload %s failed", model_id)
+        if unloaded:
+            await _wait_for_gpu_drain()
     return {"unloaded": unloaded}
 
 
@@ -852,8 +848,6 @@ async def speech(body: SpeechRequest) -> Response:
     if not body.input.strip():
         raise HTTPException(status_code=400, detail="input text is empty")
 
-    await _evict_siblings(model)
-
     # PCM streaming path — only when the backend natively supports it
     # (currently Qwen3-TTS only). Yields int16 LE PCM chunks as they are
     # decoded; no container header. The X-Sample-Rate header signals the
@@ -873,6 +867,14 @@ async def speech(body: SpeechRequest) -> Response:
         }.items()
         if v is not None
     }
+
+    try:
+        await _reserve_model(model)
+    except ModelAdmissionError as exc:
+        raise HTTPException(
+            status_code=exc.status_code,
+            detail=exc.detail,
+        ) from exc
 
     if fmt == "pcm" and hasattr(backend, "synthesize_stream"):
         chunk_size = config.QWEN3_STREAM_CHUNK_SIZE
@@ -903,6 +905,8 @@ async def speech(body: SpeechRequest) -> Response:
             except (ValueError, FileNotFoundError, RuntimeError) as exc:
                 # Headers are already committed; log and stop the stream.
                 log.error("qwen3_tts streaming error (stream aborted): %s", exc)
+            finally:
+                await _release_model(model)
 
         return StreamingResponse(
             _pcm_stream(),
@@ -911,39 +915,42 @@ async def speech(body: SpeechRequest) -> Response:
         )
 
     try:
-        synth = await backend.synthesize(
-            body.input,
-            voice=voice,
-            speed=speed,
-            instructions=body.instructions,
-            language=body.language,
-            sampling=sampling,
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+        try:
+            synth = await backend.synthesize(
+                body.input,
+                voice=voice,
+                speed=speed,
+                instructions=body.instructions,
+                language=body.language,
+                sampling=sampling,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
 
-    try:
-        audio_bytes, content_type = await tts_mod.encode_audio(
-            synth.pcm_int16, synth.sample_rate, fmt
-        )
-    except tts_mod.TTSEncodingError as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        try:
+            audio_bytes, content_type = await tts_mod.encode_audio(
+                synth.pcm_int16, synth.sample_rate, fmt
+            )
+        except tts_mod.TTSEncodingError as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
 
-    if log.isEnabledFor(logging.DEBUG):
-        log.debug(
-            "tts response",
-            extra={
-                "resp_model": model,
-                "resp_voice": voice,
-                "resp_format": fmt,
-                "resp_sample_rate": synth.sample_rate,
-                "resp_bytes": len(audio_bytes),
-                "resp_content_type": content_type,
-            },
-        )
-    return Response(content=audio_bytes, media_type=content_type)
+        if log.isEnabledFor(logging.DEBUG):
+            log.debug(
+                "tts response",
+                extra={
+                    "resp_model": model,
+                    "resp_voice": voice,
+                    "resp_format": fmt,
+                    "resp_sample_rate": synth.sample_rate,
+                    "resp_bytes": len(audio_bytes),
+                    "resp_content_type": content_type,
+                },
+            )
+        return Response(content=audio_bytes, media_type=content_type)
+    finally:
+        await _release_model(model)
 
 
 @app.post("/v1/audio/transcriptions")
@@ -1069,6 +1076,40 @@ async def run_transcription_pipeline(
     do_diarize: bool,
     granularities: list[str] | None = None,
 ) -> str | dict[str, Any]:
+    """Admit and run one HTTP or MCP transcription request."""
+    if model not in BACKENDS:
+        raise KeyError(model)
+    try:
+        await _reserve_model(model)
+    except ModelAdmissionError as exc:
+        raise HTTPException(
+            status_code=exc.status_code,
+            detail=exc.detail,
+        ) from exc
+    try:
+        return await _run_reserved_transcription_pipeline(
+            raw=raw,
+            original_name=original_name,
+            model=model,
+            language=language,
+            response_format=response_format,
+            do_diarize=do_diarize,
+            granularities=granularities,
+        )
+    finally:
+        await _release_model(model)
+
+
+async def _run_reserved_transcription_pipeline(
+    *,
+    raw: bytes,
+    original_name: str,
+    model: str,
+    language: str | None,
+    response_format: str,
+    do_diarize: bool,
+    granularities: list[str] | None = None,
+) -> str | dict[str, Any]:
     """Run the post-audio-resolution transcribe flow; return the raw payload.
 
     Returns:
@@ -1097,8 +1138,6 @@ async def run_transcription_pipeline(
     # would degenerate to "L: <all L text>\nR: <all R text>" blocks.
     needs_timestamps = fmt in _VERBOSE_FORMATS or do_diarize
     grans = list(granularities or [])
-
-    await _evict_siblings(model)
 
     if do_diarize:
         l_path, r_path = await asyncio.to_thread(

@@ -31,14 +31,23 @@ is not tenant isolation.
 
 ## Model lifecycle
 
-Models load lazily. `GET /api/ps` lists loaded models and idle time;
+Models load lazily. `GET /api/ps` lists loaded models, idle time, active
+requests, and configured concurrency;
 `DELETE /api/ps/{model}` unloads one; `POST /unload` unloads all it can.
 `TALKIES_MODEL_TTL=0` disables automatic idle eviction. `TALKIES_PRELOAD`
 attempts configured models during startup; preload failures are logged.
 
-An active live-ASR stream pins its model. While pinned, requests that need a
-different model and unload endpoints receive HTTP 409. The pin releases on end,
-cancel, disconnect, timeout, or error.
+Every successful sibling replacement, manual unload, unload-all operation, and
+idle eviction drops backend references and drains initialized Torch CUDA
+caches and IPC allocations before another model loads. Native backends release
+their own device buffers in `unload()`. The process keeps the CUDA driver
+context itself available for later requests, but unloaded model weights and
+allocator caches are not intentionally retained.
+
+Any active inference request pins its model. While pinned, requests that need a
+different model and unload endpoints receive HTTP 409. The pin releases on
+completion, stream exhaustion, end, cancel, disconnect, timeout, or error.
+Per-model limits reject excess work with HTTP 429 instead of queueing it.
 
 ## Logs and runtime
 

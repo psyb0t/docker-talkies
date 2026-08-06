@@ -20,6 +20,10 @@ _SHERPA_REVISION = "672fbf1b30579d6585301139bb363f42a0ad4a24"
 _VOSK_SLUG = "vosk-small-en-us-0.15"
 _VOSK_REPO = "aglaia-models/vosk-model-small-en-us-0.15"
 _VOSK_REVISION = "0aac829e440a7c8bd30f674a17d9a6d1dbdbbf3a"
+_PARAKEET_CUDA_BUNDLE = "parakeet-v0.5.0-lib-linux-cuda12-x64.tar.gz"
+_PARAKEET_CUDA_BUNDLE_SHA256 = (
+    "7c3a151793050436386b2699ad025ae96713f34e8a070a9f2029c39d57162ec1"
+)
 
 
 @pytest.mark.parametrize("registry_name", _REGISTRIES)
@@ -60,3 +64,15 @@ def test_builtin_vosk_model_is_pinned_and_selectable(registry_name: str) -> None
         "executor": "vosk",
         "languages": ["en"],
     }
+
+
+def test_cuda_image_uses_hash_verified_precompiled_parakeet_library() -> None:
+    dockerfile = (_ROOT / "Dockerfile.cuda").read_text()
+
+    assert _PARAKEET_CUDA_BUNDLE in dockerfile
+    assert _PARAKEET_CUDA_BUNDLE_SHA256 in dockerfile
+    assert "sha256sum --check" in dockerfile
+    assert "test -f /opt/parakeet/libparakeet.so" in dockerfile
+    assert "TALKIES_PARAKEET_CPP_LIB=/opt/parakeet/libparakeet.so" in dockerfile
+    assert "AS parakeet-builder" not in dockerfile
+    assert "git clone https://github.com/mudler/parakeet.cpp" not in dockerfile

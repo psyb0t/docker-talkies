@@ -45,7 +45,7 @@ else
 fi
 
 test_stream_fixture_over_real_websocket() {
-	local summary helper_stderr transcript normalized ready_model sent_frames reported_frames audio_seconds
+	local summary helper_stderr transcript normalized ready_model sent_frames reported_frames audio_seconds stream_count
 	helper_stderr="$(mktemp)"
 	if ! summary="$(
 		docker run --rm -i \
@@ -68,6 +68,7 @@ PCM_FORMAT = "pcm_s16le"
 PCM_SAMPLE_RATE = 16000
 PCM_CHANNELS = 1
 RECEIVE_TIMEOUT_SECONDS = 300
+CONCURRENT_STREAMS = 2
 
 
 def pcm_fixture() -> bytes:
@@ -99,8 +100,10 @@ def pcm_fixture() -> bytes:
     return conversion.stdout
 
 
-async def stream_fixture() -> dict[str, object]:
-    pcm = pcm_fixture()
+async def stream_once(
+    pcm: bytes,
+    ready_barrier: asyncio.Barrier,
+) -> dict[str, object]:
     start = {
         "type": "start",
         "model": MODEL,
@@ -123,6 +126,7 @@ async def stream_fixture() -> dict[str, object]:
             raise RuntimeError(f"expected ready event, got {ready}")
         if ready.get("model") != MODEL:
             raise RuntimeError(f"ready model mismatch: {ready}")
+        await ready_barrier.wait()
 
         for offset in range(0, len(pcm), FRAME_BYTES):
             await socket.send(pcm[offset : offset + FRAME_BYTES])
@@ -170,6 +174,19 @@ async def stream_fixture() -> dict[str, object]:
     }
 
 
+async def stream_fixture() -> dict[str, object]:
+    pcm = pcm_fixture()
+    ready_barrier = asyncio.Barrier(CONCURRENT_STREAMS)
+    streams = await asyncio.gather(
+        *(stream_once(pcm, ready_barrier) for _ in range(CONCURRENT_STREAMS))
+    )
+    return {
+        **streams[0],
+        "stream_count": len(streams),
+        "transcripts": [stream["transcript"] for stream in streams],
+    }
+
+
 print(json.dumps(asyncio.run(stream_fixture())))
 PY
 	)"; then
@@ -189,10 +206,12 @@ PY
 	sent_frames="$(printf '%s\n' "$summary" | jq -r '.sent_frames')"
 	reported_frames="$(printf '%s\n' "$summary" | jq -r '.stats.frames')"
 	audio_seconds="$(printf '%s\n' "$summary" | jq -r '.stats.audio_seconds')"
+	stream_count="$(printf '%s\n' "$summary" | jq -r '.stream_count')"
 	normalized="$(printf '%s' "$transcript" | talkies_normalize_text)"
 
 	assert_eq "$ready_model" "$ASR_SLUG" "ready model"
 	assert_eq "$reported_frames" "$sent_frames" "stats frame count"
+	assert_eq "$stream_count" "2" "concurrent stream count"
 	if ! awk -v seconds="$audio_seconds" 'BEGIN { exit !(seconds > 0) }'; then
 		echo "  FAIL: non-positive streamed audio duration: $audio_seconds"
 		return 1
@@ -208,7 +227,7 @@ PY
 	done
 
 	echo "  streamed: $transcript"
-	echo "  ok: ready, transcript, final, stats; frames=$sent_frames audio=${audio_seconds}s"
+	echo "  ok: two concurrent streams reached ready, transcript, final, and stats; frames=$sent_frames audio=${audio_seconds}s"
 	echo "OK: ${FUNCNAME[0]}"
 }
 

@@ -4,6 +4,35 @@ All notable changes per release. Versions follow [semver](https://semver.org)
 pre-1.0 conventions: minor bumps may include breaking changes (called out
 explicitly with **Breaking.**), patch bumps are docs / build / fixes only.
 
+## v0.14.0 — 2026-08-05
+
+Model-aware concurrency and native CUDA lifecycle controls make parallel speech
+requests predictable across every inference surface.
+
+### Added
+
+- Per-model concurrency now covers HTTP transcription, MCP transcription,
+  WebSocket ASR, buffered TTS, and streaming TTS through one admission
+  controller. `TALKIES_MODEL_MAX_CONCURRENCY` sets the fallback limit,
+  `TALKIES_MODEL_CONCURRENCY` applies per-slug overrides, and registry entries
+  can define `max_concurrency`; malformed, duplicate, disabled, unknown, and
+  out-of-range values fail at startup.
+- `GET /v1/models` reports `max_concurrency`; `GET /api/ps` reports both
+  `active_requests` and `max_concurrency`. Capacity exhaustion returns 429,
+  while attempts to switch models during active inference return 409.
+- The bundled Nemotron model admits two concurrent requests in both CPU and
+  CUDA registries. Real WebSocket coverage verifies two streams are admitted
+  together and finish independently.
+
+### Changed
+
+- The CUDA image now installs the upstream parakeet.cpp v0.5.0 CUDA 12 binary
+  bundle by pinned SHA-256 instead of compiling a CPU-only library in a CUDA
+  image. Its bundled CUDA libraries remain isolated from the Python ML stack.
+- Every model-unload path now releases native model contexts, collects Python
+  references, and clears already-initialized Torch CUDA allocator and IPC
+  caches without creating a CUDA context solely for cleanup.
+
 ## v0.13.3 — 2026-08-01
 
 ### Fixed

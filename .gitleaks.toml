@@ -1,0 +1,14 @@
+title = "Talkies secret scanning"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Gitignored caches and local audit state present in this worktree"
+paths = [
+  '''(^|/)\.e2e-cache(?:/|$)''',
+  '''(^|/)\.mypy_cache(?:/|$)''',
+  '''(^|/)\.pytest_cache(?:/|$)''',
+  '''(^|/)\.testing(?:/|$)''',
+  '''(^|/)\.secaudit(?:/|$)''',
+]

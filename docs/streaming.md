@@ -114,6 +114,11 @@ emits `stats` with `canceled: true`, and closes normally. Disconnect, timeout,
 and protocol errors release the session; a disconnected client may not receive
 the terminal event.
 
+Each stream consumes one slot from the model's shared `max_concurrency` limit
+and from the independent server-wide `TALKIES_STREAM_MAX_CONNECTIONS` limit.
+The same per-model pool also counts HTTP ASR, MCP ASR, and TTS requests. A full
+model rejects a new stream with `connection_limit`; it does not queue it.
+
 ### Events
 
 `ready` echoes the selected model and fixed PCM format. `partial`, `endpoint`,
@@ -153,7 +158,7 @@ possible: `{"type":"error","code":"...","detail":"..."}`.
 | 4404 | Unknown model slug |
 | 4408 | Idle timeout |
 | 4409 | Model cannot stream or another model is pinned |
-| 4429 | Global connection limit reached |
+| 4429 | Global WebSocket or selected-model concurrency limit reached |
 | 4500 | Backend or internal failure |
 
 Stable error codes include `missing_field`, `unknown_field`,
