@@ -260,8 +260,8 @@ File structure:
 |---|---|---|
 | `repo` | yes | HuggingFace repo id. Pulled via `snapshot_download(local_dir=$TALKIES_DATA_DIR/models/<slug>)` — flat directory keyed by slug, no HF cache indirection. |
 | `revision` | no | Immutable Hugging Face commit SHA to download. Pin this for reproducible custom registries. |
-| `executor` | yes | One of `whisper`, `parakeet`, `parakeet_cpp`, `canary_multitask`, `canary_salm`, `sherpa`, `vosk`, `kokoro`, `kokoro_nvidia`, `qwen3_tts`. Other values fail startup. |
-| `modality` | no | `asr` (default) or `tts`. Drives endpoint guards (`/v1/audio/transcriptions` requires ASR; `/v1/audio/speech` requires TTS) and the `modality` field on `/v1/models` entries. The `kokoro` and `qwen3_tts` executors imply `tts`; the seven ASR executors imply `asr`. |
+| `executor` | yes | One of `whisper`, `parakeet`, `parakeet_cpp`, `canary_multitask`, `canary_salm`, `sherpa`, `vosk`, `kokoro`, `kokoro_nvidia`, `qwen3_tts`, `chatterbox`. Other values fail startup — the allowlist is `VALID_EXECUTORS` in `src/talkies/config.py`, and `load_registry()` runs at server import, so an unknown executor stops the whole process rather than disabling one model. |
+| `modality` | no | `asr` (default) or `tts`. Drives endpoint guards (`/v1/audio/transcriptions` requires ASR; `/v1/audio/speech` requires TTS) and the `modality` field on `/v1/models` entries. The `kokoro`, `qwen3_tts` and `chatterbox` executors imply `tts`; the seven ASR executors imply `asr`. |
 | `download_patterns` | no | Non-empty list of static repository-relative paths passed to Hugging Face `snapshot_download(..., allow_patterns=...)`. Use it to limit a multi-variant repository to the files selected by this registry entry. |
 | `default_source_lang` | no | ASR only. Used when the request omits `language`. |
 | `default_target_lang` | no | ASR only. Used by Canary multitask for translation tasks. |

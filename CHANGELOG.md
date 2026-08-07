@@ -4,6 +4,28 @@ All notable changes per release. Versions follow [semver](https://semver.org)
 pre-1.0 conventions: minor bumps may include breaking changes (called out
 explicitly with **Breaking.**), patch bumps are docs / build / fixes only.
 
+## v0.15.1 — 2026-08-07
+
+Fixes a startup failure in the v0.15.0 CUDA image.
+
+### Fixed
+
+- **The CUDA image could not start.** `models.json` declares
+  `"executor": "chatterbox"` for `chatterbox-turbo`, but `VALID_EXECUTORS` in
+  `src/talkies/config.py` never gained the matching entry, so `load_registry()`
+  rejected the file. Because `src/talkies/server.py` calls `load_registry()` at
+  module scope, the `ValueError` fired during import and the process exited
+  before binding a port — taking all twenty models down, not just the new one.
+  The CPU image was unaffected: its registry does not list `chatterbox-turbo`,
+  so validation never saw the unknown executor.
+- Added a shipped-registry contract test over both `models.json` and
+  `models-cpu.json` asserting that every declared executor exists in
+  `VALID_EXECUTORS` and that each registry loads. The other tests in
+  `tests/test_config.py` build synthetic fixtures, so nothing exercised the
+  registries that actually ship in the images — which is why a green test
+  suite and a successful image build both passed over a server that could not
+  boot.
+
 ## v0.15.0 — 2026-08-07
 
 Added Chatterbox Turbo, an expressive English TTS model with inline

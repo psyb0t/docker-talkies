@@ -370,3 +370,46 @@ def test_stream_buffer_must_hold_one_maximum_frame(monkeypatch, fake_registry):
     sys.modules.pop("talkies.config", None)
     with pytest.raises(ValueError, match="must hold at least one"):
         importlib.import_module("talkies.config")
+
+
+# --- shipped-registry contract -----------------------------------------------
+# The unit tests above all run against synthetic fixtures, so nothing here
+# loaded the registries that actually ship in the images. That gap let a model
+# declare an executor the validator rejected: the slug, the backend and the
+# factory branch were all correct, but VALID_EXECUTORS never got the entry, and
+# load_registry() runs at server import time — so the image died on startup
+# with every model, not just the new one. These two tests close that gap for
+# every future model addition.
+
+_SHIPPED_REGISTRIES = ("models.json", "models-cpu.json")
+
+
+def _registry_path(name: str) -> Path:
+    return Path(__file__).resolve().parent.parent / name
+
+
+@pytest.mark.parametrize("registry_name", _SHIPPED_REGISTRIES)
+def test_shipped_registry_executors_are_all_valid(monkeypatch, registry_name):
+    path = _registry_path(registry_name)
+    cfg = _reload_config(monkeypatch, path)
+    declared = {
+        entry.get("executor", "whisper")
+        for entry in json.loads(path.read_text(encoding="utf-8"))["models"].values()
+    }
+    # Without this the test passes vacuously if the registry schema ever moves
+    # the entries out from under the "models" key — an empty set has no unknowns.
+    assert declared, f"{registry_name} declared no executors — schema changed?"
+    unknown = declared - set(cfg.VALID_EXECUTORS)
+    assert not unknown, (
+        f"{registry_name} declares executor(s) {sorted(unknown)} missing from "
+        f"config.VALID_EXECUTORS — load_registry() would reject the whole file "
+        f"at server import, taking every model down with it"
+    )
+
+
+@pytest.mark.parametrize("registry_name", _SHIPPED_REGISTRIES)
+def test_shipped_registry_loads(monkeypatch, registry_name):
+    path = _registry_path(registry_name)
+    cfg = _reload_config(monkeypatch, path)
+    registry = cfg.load_registry()
+    assert registry, f"{registry_name} loaded empty"

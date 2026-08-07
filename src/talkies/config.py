@@ -237,6 +237,7 @@ VALID_EXECUTORS = (
     "qwen3_tts",
     "sherpa",
     "vosk",
+    "chatterbox",
 )
 
 
