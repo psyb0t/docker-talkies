@@ -50,4 +50,13 @@ einops==0.8.2
 conformer==0.3.2
 pyloudnorm==0.2.0
 resemble-perth==1.0.1
+# setuptools 81 removed pkg_resources, which resemble-perth 1.0.1 imports at
+# module load. Upstream catches the ImportError and sets
+# PerthImplicitWatermarker = None, and chatterbox-tts then calls that name
+# unconditionally — so the mismatch surfaces as
+# "TypeError: 'NoneType' object is not callable" when the model loads, not as
+# an install or import failure. No perth release past 1.0.1 exists, so the
+# constraint has to live here. Only transitive consumers (torch, nemo-toolkit,
+# spacy, tensorboard, ctranslate2) need setuptools at all; none require >=81.
+setuptools<81
 en_core_web_sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl

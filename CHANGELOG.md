@@ -4,6 +4,30 @@ All notable changes per release. Versions follow [semver](https://semver.org)
 pre-1.0 conventions: minor bumps may include breaking changes (called out
 explicitly with **Breaking.**), patch bumps are docs / build / fixes only.
 
+## v0.15.2 — 2026-08-07
+
+Fixes Chatterbox synthesis failing at model load in the CUDA image.
+
+### Fixed
+
+- **`chatterbox-turbo` raised `TypeError: 'NoneType' object is not callable`
+  on its first synthesis request.** `resemble-perth` 1.0.1 imports
+  `pkg_resources` at module load, and setuptools removed it in 81. Nothing
+  pinned setuptools — it resolved transitively through torch, NeMo, spaCy,
+  TensorBoard and CTranslate2 to 82.0.1, so `pkg_resources` was absent.
+  Upstream catches that `ImportError` and sets `PerthImplicitWatermarker` to
+  `None`; `chatterbox-tts` then calls that name unconditionally when
+  constructing the model. So the install succeeded, every import succeeded,
+  and only the first `POST /v1/audio/speech` failed. No `resemble-perth`
+  release past 1.0.1 exists, so `scripts/heavy-deps-cuda.in` now constrains
+  `setuptools<81`; the recompiled lock resolves 80.10.2 and moves no other
+  package. Other CUDA models were unaffected.
+- `Dockerfile.cuda` now asserts the Chatterbox runtime wiring at build time —
+  it imports `perth`, imports `ChatterboxTurboTTS`, and constructs
+  `PerthImplicitWatermarker()`. A dependency set that leaves the watermarker
+  `None` fails the image build instead of a user request. The check runs in
+  the builder stage, so it adds nothing to the runtime image.
+
 ## v0.15.1 — 2026-08-07
 
 Fixes a startup failure in the v0.15.0 CUDA image.
