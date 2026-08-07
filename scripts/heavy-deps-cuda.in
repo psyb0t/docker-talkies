@@ -34,4 +34,20 @@ numpy==1.26.4
 kokoro==0.9.4
 phonemizer-fork==3.3.2
 faster-qwen3-tts==0.2.6
+# chatterbox-turbo runtime leaves. Two of its deps are deliberately absent and
+# get hash-pinned --no-deps installs in Dockerfile.cuda instead, because the
+# Dockerfile installs --no-deps from the compiled file — so anything the
+# resolver pulls in lands in the production image:
+#   chatterbox-tts — metadata hard-pins torch==2.6.0 / transformers==5.2.0,
+#     unsatisfiable against the pins above, and pulls gradio.
+#   s3tokenizer    — declares pre-commit as a RUNTIME dep, which drags
+#     virtualenv/distlib/nodeenv/identify/cfgv in with it.
+# Both wheels are pure-python and import only what is listed here.
+# diffusers is held at 0.29.x: s3gen's matcha decoder imports
+# diffusers.models.lora.LoRACompatibleLinear, removed in later releases.
+diffusers==0.29.0
+einops==0.8.2
+conformer==0.3.2
+pyloudnorm==0.2.0
+resemble-perth==1.0.1
 en_core_web_sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl

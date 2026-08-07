@@ -3,12 +3,30 @@ title = "Talkies secret scanning"
 [extend]
 useDefault = true
 
+# gitleaks `dir` mode scans the working tree and does NOT honour .gitignore, so
+# every gitignored path has to be named again here. Without this the scan drowns
+# in findings from local caches and vendored research clones that are never
+# committed — and it takes minutes instead of seconds (.e2e-cache and
+# .research_files alone are ~6.6 GB of third-party fixtures).
+#
+# Every entry below was verified ignored AND untracked before being added.
+# Paths only — never allowlist by regex on the matched text, since that would
+# also silence a real credential that happened to contain the same word.
 [[allowlists]]
-description = "Gitignored caches and local audit state present in this worktree"
+description = "Gitignored caches, local audit state, and vendored research clones"
 paths = [
   '''(^|/)\.e2e-cache(?:/|$)''',
+  '''(^|/)\.research_files(?:/|$)''',
+  '''(^|/)index-tts(?:/|$)''',
   '''(^|/)\.mypy_cache(?:/|$)''',
   '''(^|/)\.pytest_cache(?:/|$)''',
+  '''(^|/)\.ruff_cache(?:/|$)''',
+  '''(^|/)\.telemetry(?:/|$)''',
   '''(^|/)\.testing(?:/|$)''',
   '''(^|/)\.secaudit(?:/|$)''',
+  '''(^|/)\.claude(?:/|$)''',
+  '''(^|/)CLAUDE\.md$''',
+  '''(^|/)__pycache__(?:/|$)''',
+  '''(^|/)\.venv(?:/|$)''',
+  '''(^|/)\.git(?:/|$)''',
 ]

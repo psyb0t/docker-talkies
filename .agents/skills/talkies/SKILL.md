@@ -1,6 +1,6 @@
 ---
 name: talkies
-description: Self-hosted OpenAI-compatible speech service. /v1/audio/transcriptions fronts 12 open ASR models (Whisper, Parakeet, Nemotron-3.5-ASR, Canary, Sherpa-ONNX, Vosk); /v1/audio/transcriptions/stream accepts live PCM over WebSocket. /v1/audio/speech fronts 2 TTS engines / 3 backends — Kokoro-82M (41 baked voices, PyTorch + ONNX runtimes) and the CUDA-only Qwen3-TTS family (voice cloning, preset speakers, voice design). Stereo diarization, URL fetching, six ASR/file-staging MCP tools, bearer auth.
+description: Self-hosted OpenAI-compatible speech service. /v1/audio/transcriptions fronts 12 open ASR models (Whisper, Parakeet, Nemotron-3.5-ASR, Canary, Sherpa-ONNX, Vosk); /v1/audio/transcriptions/stream accepts live PCM over WebSocket. /v1/audio/speech fronts 3 TTS engines / 4 backends — Kokoro-82M (41 baked voices, PyTorch + ONNX runtimes), the CUDA-only Qwen3-TTS family (voice cloning, preset speakers, voice design), and the CUDA-only Chatterbox Turbo (English, 19 inline emotion tags, transcript-free cloning). Stereo diarization, URL fetching, six ASR/file-staging MCP tools, bearer auth.
 homepage: https://github.com/psyb0t/docker-talkies
 user-invocable: true
 permissions:
@@ -17,7 +17,7 @@ Self-hosted speech service — ASR and TTS, one container. OpenAI-compatible wir
 
 ASR (`POST /v1/audio/transcriptions`): twelve bundled slugs — `whisper-large-v3`, `whisper-large-v3-turbo`, `parakeet-tdt-0.6b-v3`, `nemotron-3.5-asr-0.6b`, `canary-180m-flash`, `canary-1b-flash`, `canary-qwen-2.5b`, four selectable English Sherpa Zipformer variants, and `vosk-small-en-us-0.15`.
 
-TTS (`POST /v1/audio/speech`): 2 engines / 3 backends across 7 slugs — `kokoro-82m` (PyTorch) and `kokoro-82m-nvidia` (ONNX/ORT) with 41 baked voices across en/es/fr/hi/it/pt, plus the CUDA-only Qwen3-TTS family: `qwen3-tts-0.6b` / `qwen3-tts-1.7b` (voice cloning from reference clips), `qwen3-tts-0.6b-custom` / `qwen3-tts-1.7b-custom` (9 preset speakers), `qwen3-tts-1.7b-design` (voice from an NL description). Discover voices via `GET /v1/audio/voices`.
+TTS (`POST /v1/audio/speech`): 3 engines / 4 backends across 8 slugs — `kokoro-82m` (PyTorch) and `kokoro-82m-nvidia` (ONNX/ORT) with 41 baked voices across en/es/fr/hi/it/pt, plus the CUDA-only Qwen3-TTS family: `qwen3-tts-0.6b` / `qwen3-tts-1.7b` (voice cloning from reference clips), `qwen3-tts-0.6b-custom` / `qwen3-tts-1.7b-custom` (9 preset speakers), `qwen3-tts-1.7b-design` (voice from an NL description), plus the CUDA-only `chatterbox-turbo` (English only; 19 inline emotion tags; clones from a reference `.wav` with no transcript). Discover voices via `GET /v1/audio/voices`.
 
 Extras: live PCM ASR over WebSocket, stereo diarization on transcription, URL `file_path` fetching, server-side file staging, MCP endpoint with 6 ASR-side tools, optional bearer-token auth.
 
@@ -45,6 +45,8 @@ This skill is **not** low-risk to orchestrate blindly — it issues local shell 
 - German/French/Spanish ↔ English speech-to-text translation via Canary-1B-Flash.
 - Synthesize speech from text via Kokoro-82M — English (American + British), Spanish, French, Hindi, Italian, Portuguese.
 - Voice-clone speech via Qwen3-TTS-0.6B from a reference `.wav` you provide — drop into `/data/custom-voices/`, immediately appears under `GET /v1/audio/voices` with `origin=custom`. **Only clone voices you're authorized to use, with the speaker's consent** — see [Qwen3-TTS Custom Voices](references/setup.md#qwen3-tts-custom-voices).
+- Voice-clone via `chatterbox-turbo` from the same `/data/custom-voices/` drop — no sibling transcript needed, but the clip must be longer than 5 seconds. Same consent requirement applies.
+- Emotive English delivery via `chatterbox-turbo` — write tags inline in `input`, e.g. `Oh no [sigh] not again.` The tokenizer defines exactly 19: `[angry]` `[fear]` `[surprised]` `[whispering]` `[advertisement]` `[dramatic]` `[narration]` `[crying]` `[happy]` `[sarcastic]` `[clear throat]` `[sigh]` `[shush]` `[cough]` `[groan]` `[sniff]` `[gasp]` `[chuckle]` `[laugh]`. Anything else is read as literal text.
 - Drop-in replacement for `api.openai.com/v1/audio/transcriptions` and `api.openai.com/v1/audio/speech` in existing client code.
 
 ## When NOT To Use
@@ -55,7 +57,11 @@ This skill is **not** low-risk to orchestrate blindly — it issues local shell 
 - Japanese / Chinese TTS — Kokoro upstream supports them but talkies filters those voices out (they need the `misaki[ja]` / `misaki[zh]` extras).
 - Kokoro on OpenAI aliases (`alloy`, `echo`, `fable`, `onyx`, `nova`, `shimmer`) — Kokoro exposes its native voice names only (`af_*`, `bm_*`, etc.). Map client-side. (Qwen3-TTS does ship `alloy` / `echo` / `fable` as builtin voice slugs, but they're voice-cloned samples, not OpenAI's voices — there's no audio compatibility.)
 - `qwen3-tts-0.6b` on CPU — voice cloning hard-fails without CUDA at load time. The `faster_qwen3_tts` upstream raises `ValueError` on non-CUDA devices; talkies surfaces this as a load failure on the first request.
-- `qwen3-tts-0.6b` `speed` parameter — Qwen3-TTS has no playback-rate control. Field is accepted for OpenAI compat but **ignored** (only Kokoro honors `speed`).
+- `qwen3-tts-0.6b` `speed` parameter — Qwen3-TTS has no playback-rate control. Field is accepted for OpenAI compat but **ignored** (only Kokoro honors `speed`; `chatterbox-turbo` ignores it too).
+- `chatterbox-turbo` for anything but English — it is an English-only checkpoint. Use Kokoro or Qwen3-TTS for other languages.
+- `chatterbox-turbo` on CPU — the slug is registered in the CUDA image only. The model does run on CPU but measures roughly 5-10x slower than realtime, so it is not offered as a CPU slug.
+- `chatterbox-turbo` where output must be unwatermarked — every waveform it produces carries a neural watermark applied unconditionally by the upstream package, which exposes no option to disable it.
+- `chatterbox-turbo` reference clips of 5 seconds or shorter — rejected with a 400. Supply a longer clip.
 - arm64 hosts — `linux/amd64` only.
 
 ## Setup

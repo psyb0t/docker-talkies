@@ -633,6 +633,10 @@ confection==1.3.3 \
     #   spacy
     #   thinc
     #   weasel
+conformer==0.3.2 \
+    --hash=sha256:32ef34fa461ff32e1c33061025c0f583884f19d2f0aba200234f4e771f777eda \
+    --hash=sha256:b957faa683e9e75061257f77407318428f2ad0fb5262bfc2e9b55fc2fffdfa03
+    # via -r scripts/heavy-deps-cuda.in
 contourpy==1.3.3 \
     --hash=sha256:023b44101dfe49d7d53932be418477dba359649246075c996866106da069af69 \
     --hash=sha256:07ce5ed73ecdc4a03ffe3e1b3e3c1166db35ae7584be76f65dbbe28a7791b0cc \
@@ -1062,6 +1066,10 @@ decorator==5.3.1 \
     # via
     #   ipython
     #   librosa
+diffusers==0.29.0 \
+    --hash=sha256:0212030a8fabe7a07d1c8e925ccdf7a529a98b0425fa078900a679b2451a8ac2 \
+    --hash=sha256:4c194d2379644a0f7ef9b4ff12c8cf5de4c6324e811265754f08e2f839b8cedb
+    # via -r scripts/heavy-deps-cuda.in
 dill==0.4.1 \
     --hash=sha256:1e1ce33e978ae97fcfcff5638477032b801c46c7c65cf717f95fbc2248f79a9d \
     --hash=sha256:423092df4182177d4d8ba8290c8a5b640c66ab35ec7da59ccfa00f6fa3eea5fa
@@ -1154,6 +1162,8 @@ einops==0.8.2 \
     --hash=sha256:54058201ac7087911181bfec4af6091bb59380360f069276601256a76af08193 \
     --hash=sha256:609da665570e5e265e27283aab09e7f279ade90c4f01bcfca111f3d3e13f2827
     # via
+    #   -r scripts/heavy-deps-cuda.in
+    #   conformer
     #   nemo-toolkit
     #   qwen-tts
 en-core-web-sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl \
@@ -1192,6 +1202,7 @@ filelock==3.29.0 \
     --hash=sha256:96f5f6344709aa1572bbf631c640e4ebeeb519e08da902c39a001882f30ac258
     # via
     #   datasets
+    #   diffusers
     #   huggingface-hub
     #   torch
     #   transformers
@@ -1624,6 +1635,7 @@ huggingface-hub==0.35.3 \
     #   -r scripts/heavy-deps-cuda.in
     #   accelerate
     #   datasets
+    #   diffusers
     #   faster-qwen3-tts
     #   faster-whisper
     #   gradio
@@ -1649,6 +1661,10 @@ idna==3.17 \
     #   httpx
     #   requests
     #   yarl
+importlib-metadata==9.0.0 \
+    --hash=sha256:2d21d1cc5a017bd0559e36150c21c830ab1dc304dedd1b7ea85d20f45ef3edd7 \
+    --hash=sha256:a4f57ab599e6a2e3016d7595cfd72eb4661a5106e787a95bcc90c7105b831efc
+    # via diffusers
 indic-numtowords==1.1.0 \
     --hash=sha256:bf4b7b9e539323d9b00bc868caa2d9369170b8f3ac4d19619bf9c6cdc6f89572 \
     --hash=sha256:d1addc21444c332e05bfd8726af427960c096c2a16776d98bee4fbc36ade5d25
@@ -2710,6 +2726,7 @@ numpy==1.26.4 \
     #   contourpy
     #   ctranslate2
     #   datasets
+    #   diffusers
     #   faster-qwen3-tts
     #   gradio
     #   kaldi-python-io
@@ -3206,6 +3223,7 @@ pillow==12.2.0 \
     --hash=sha256:fb043ee2f06b41473269765c2feae53fc2e2fbf96e5e22ca94fb5ad677856f06 \
     --hash=sha256:fc3d34d4a8fbec3e88a79b92e5465e0f9b842b628675850d860b8bd300b159f5
     # via
+    #   diffusers
     #   gradio
     #   matplotlib
     #   mediapy
@@ -3687,7 +3705,9 @@ pygments==2.20.0 \
 pyloudnorm==0.2.0 \
     --hash=sha256:8bf597658ea4e1975c275adf490f6deb5369ea409f2901f939915efa4b681b16 \
     --hash=sha256:9bb69afb904f59d007a7f9ba3d75d16fb8aeef35c44d6df822a9f192d69cf13f
-    # via nemo-toolkit
+    # via
+    #   -r scripts/heavy-deps-cuda.in
+    #   nemo-toolkit
 pyparsing==3.3.2 \
     --hash=sha256:850ba148bd908d7e2411587e247a1e4f0327839c40e2e5e6d05a007ecc69911d \
     --hash=sha256:c777f4d763f140633dcb6d8a3eda953bf7a214dc4eff598413c070bcdc117cbc
@@ -4023,6 +4043,7 @@ regex==2026.5.9 \
     --hash=sha256:ff8d372ac2acdc048d1c19916f27ee61bc5722728458ba6ca5052f2c72d51763
     # via
     #   curated-tokenizers
+    #   diffusers
     #   misaki
     #   sacrebleu
     #   sacremoses
@@ -4034,6 +4055,7 @@ requests==2.34.2 \
     --hash=sha256:f288924cae4e29463698d6d60bc6a4da69c89185ad1e0bcc4104f584e960b9ed
     # via
     #   datasets
+    #   diffusers
     #   huggingface-hub
     #   pooch
     #   spacy
@@ -4043,6 +4065,10 @@ resampy==0.4.3 \
     --hash=sha256:a0d1c28398f0e55994b739650afef4e3974115edbe96cd4bb81968425e916e47 \
     --hash=sha256:ad2ed64516b140a122d96704e32bc0f92b23f45419e8b8f478e5a05f83edcebd
     # via nemo-toolkit
+resemble-perth==1.0.1 \
+    --hash=sha256:65e9c37531b1a128a4a56226b75dece4521683cf3611b0b2a5ffe234f00c9342 \
+    --hash=sha256:e4688cfc22e07b2ace567b987eb2c26e4ac19cbc37fbfacfd6794a2933ad2392
+    # via -r scripts/heavy-deps-cuda.in
 rfc3986==1.5.0 \
     --hash=sha256:270aaf10d87d0d4e095063c65bf3ddbc6ee3d0b226328ce21e036f946e421835 \
     --hash=sha256:a86d6e1f5b1dc238b218b012df0aa79409667bb209e58da56d0b94704e712a97
@@ -4227,6 +4253,7 @@ safetensors==0.7.0 \
     --hash=sha256:f4729811a6640d019a4b7ba8638ee2fd21fa5ca8c7e7bdf0fed62068fcaac737
     # via
     #   accelerate
+    #   diffusers
     #   peft
     #   transformers
 scikit-learn==1.8.0 \
@@ -4832,6 +4859,7 @@ torch==2.9.1+cu126 \
     # via
     #   -r scripts/heavy-deps-cuda.in
     #   accelerate
+    #   conformer
     #   curated-transformers
     #   faster-qwen3-tts
     #   kokoro
@@ -5413,3 +5441,7 @@ yarl==1.24.2 \
     --hash=sha256:f9a1e9b622ca284143aab5d885848686dcd85453bb1ca9abcdb7503e64dc0056 \
     --hash=sha256:fecd17873a096036c1c87ab3486f1aef7f269ada7f23f7f856f93b1cc7744f14
     # via aiohttp
+zipp==4.1.0 \
+    --hash=sha256:25ad4e16390cd314347dd8f1de67a2ac538ae658ed4ab9db16029c07c188e97f \
+    --hash=sha256:4cb57381f544315db7688e976e922a2b18cdb513d21cc194eb42232ba2a3e602
+    # via importlib-metadata

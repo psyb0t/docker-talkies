@@ -4,6 +4,37 @@ All notable changes per release. Versions follow [semver](https://semver.org)
 pre-1.0 conventions: minor bumps may include breaking changes (called out
 explicitly with **Breaking.**), patch bumps are docs / build / fixes only.
 
+## v0.15.0 — 2026-08-07
+
+Added Chatterbox Turbo, an expressive English TTS model with inline
+paralinguistic tags and transcript-free voice cloning, to the CUDA registry.
+
+- Added the `chatterbox` executor and the `chatterbox-turbo` slug
+  (`ResembleAI/chatterbox-turbo`, MIT weights, ungated). It emits 24 kHz mono
+  audio through `POST /v1/audio/speech` and is CUDA-only.
+- Emotion and non-verbal sounds are written inline in `input` as bracketed
+  tags. The model's tokenizer defines exactly 19 of them, including `[sigh]`,
+  `[whispering]`, `[sarcastic]`, `[dramatic]`, `[laugh]` and `[gasp]`; the full
+  list is in `docs/models.md`.
+- Voice selection is either `builtin`, the speaker shipped inside the
+  checkpoint, or a `.wav` under `/data/custom-voices`. Unlike the Qwen3
+  backend no reference transcript is required, but the clip must be longer
+  than five seconds — shorter clips are rejected with a 400 rather than
+  reaching the upstream assertion.
+- Registry-owned `download_patterns` fetch only the files the backend loads,
+  skipping a 1 GB tensor file the model never reads.
+- `chatterbox-tts` and `s3tokenizer` install from a separate hash-pinned
+  `requirements-chatterbox.txt` with `--no-deps`. Their declared dependency
+  metadata is either unsatisfiable against this image's pinned torch and
+  transformers, or pulls development tooling that would otherwise ship in the
+  runtime image; both wheels are pure Python and their real imports are
+  already satisfied.
+- Note: every waveform this model produces carries a neural watermark applied
+  unconditionally by the upstream package, which exposes no option to disable
+  it. See `THIRD_PARTY.md`.
+- Synced README, model, and third-party documentation; added unit coverage for
+  the voice catalog, the reference-clip bounds, and the traversal guard.
+
 ## v0.14.1 — 2026-08-06
 
 Agent integrations now describe and install the released Talkies surfaces

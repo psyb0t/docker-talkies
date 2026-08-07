@@ -62,6 +62,7 @@ details.
 | `qwen3-tts-0.6b-custom` | `Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice` | `custom_voice` | no | yes | `Vivian` |
 | `qwen3-tts-1.7b-custom` | `Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice` | `custom_voice` | no | yes | `Vivian` |
 | `qwen3-tts-1.7b-design` | `Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign` | `voice_design` | no | yes | `design` |
+| `chatterbox-turbo` | `ResembleAI/chatterbox-turbo` | `chatterbox` | no | yes | `builtin` |
 
 `GET /v1/audio/voices` is the source of truth for a model's valid voices.
 Qwen3 `base` voices are `.wav` files below `/opt/talkies/qwen3-voices` or
@@ -74,6 +75,39 @@ For `custom_voice`, `voice` is a built-in speaker name. The 1.7B model accepts
 For `voice_design`, the valid voice is `design` and `instructions` must be a
 non-empty voice description. Qwen3 produces 24 kHz mono PCM and can stream it
 with `response_format="pcm"`; see [Speech](api.md#speech).
+
+### Chatterbox Turbo
+
+English-only, 24 kHz mono, buffered (no PCM streaming). `voice` is either
+`builtin` — the speaker shipped inside the checkpoint — or the name of a `.wav`
+below `/data/custom-voices`, extension stripped, nested paths preserved. Unlike
+Qwen3 no reference transcript is needed, but the clip must be **longer than 5
+seconds**; shorter clips are rejected with a 400. `speed` has no effect and is
+ignored.
+
+Emotion and non-verbal sounds are written inline in `input` as bracketed tags.
+They are real tokens in the model's tokenizer, so only these 19 work:
+
+`[angry]` `[fear]` `[surprised]` `[whispering]` `[advertisement]` `[dramatic]`
+`[narration]` `[crying]` `[happy]` `[sarcastic]` `[clear throat]` `[sigh]`
+`[shush]` `[cough]` `[groan]` `[sniff]` `[gasp]` `[chuckle]` `[laugh]`
+
+```json
+{
+  "model": "chatterbox-turbo",
+  "voice": "builtin",
+  "input": "Oh, that's hilarious. [chuckle] Anyway [sigh] back to work."
+}
+```
+
+Every waveform this model produces carries Resemble AI's PerTh neural
+watermark. The upstream package applies it unconditionally and exposes no
+option to turn it off.
+
+The checkpoint is MIT-licensed and ungated, so the entrypoint downloads it
+without a Hugging Face token. Only the files the model actually loads are
+fetched — the repository also ships a 1 GB `s3gen.safetensors` that this
+backend never reads.
 
 ## Use a custom registry
 

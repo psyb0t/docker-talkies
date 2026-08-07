@@ -32,6 +32,7 @@ NOTES.md
 
 # Local tooling
 git-update.sh
+rebase.sh
 about.txt
 pyrightconfig.json
 mypy.ini

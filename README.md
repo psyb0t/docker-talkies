@@ -9,6 +9,17 @@ Self-hosted speech services in one Docker image: OpenAI-compatible file
 transcription and text-to-speech, Talkies live ASR over WebSocket, file
 staging, model lifecycle controls, and an MCP endpoint for ASR workflows.
 
+## Contents
+
+- [Start here](#start-here)
+- [What it provides](#what-it-provides)
+- [Models at a glance](#models-at-a-glance)
+  - [Prompting Chatterbox with emotion](#prompting-chatterbox-with-emotion)
+- [Documentation](#documentation)
+- [Agent integrations](#agent-integrations)
+- [Security in one minute](#security-in-one-minute)
+- [Development](#development)
+
 ## Start here
 
 Restrict the first boot to the models you need; otherwise the entrypoint
@@ -27,8 +38,9 @@ curl -s http://127.0.0.1:8000/v1/audio/transcriptions \
   -F "model=whisper-large-v3-turbo"
 ```
 
-For CUDA-only models and Qwen3 TTS, use `psyb0t/talkies:latest-cuda` with
-`--gpus all`. The loopback port mapping keeps the service local; see
+For CUDA-only models — Parakeet-TDT, the larger Canary models, Qwen3 TTS and
+Chatterbox Turbo — use `psyb0t/talkies:latest-cuda` with `--gpus all`. The
+loopback port mapping keeps the service local; see
 [Getting started](docs/getting-started.md) for first boot and authentication.
 
 ## What it provides
@@ -38,9 +50,12 @@ For CUDA-only models and Qwen3 TTS, use `psyb0t/talkies:latest-cuda` with
 | `POST /v1/audio/transcriptions` | File transcription and subtitles | [HTTP API](docs/api.md#transcription) |
 | `WS /v1/audio/transcriptions/stream` | Live 16 kHz PCM ASR | [Streaming](docs/streaming.md#live-asr-over-websocket) |
 | `POST /v1/audio/speech` | Speech synthesis in six formats | [HTTP API](docs/api.md#speech) |
+| `GET /v1/models` | Enabled slugs and their modality | [HTTP API](docs/api.md) |
+| `GET /v1/audio/voices` | Per-model voice catalog with origin tags | [Models](docs/models.md) |
 | `GET/PUT/DELETE /v1/files/*` | Server-side file staging | [HTTP API](docs/api.md#file-staging) |
 | `/api/ps`, `/unload` | Model inspection and eviction | [Operations](docs/operations.md#model-lifecycle) |
 | `/v1/mcp` | Streamable HTTP MCP with ASR/file tools | [HTTP API](docs/api.md#mcp) |
+| `GET /healthz` | Liveness probe; the only unauthenticated route | [Operations](docs/operations.md) |
 
 The HTTP transcription and speech routes use the corresponding OpenAI wire
 shapes where those contracts overlap. Streaming ASR, files, lifecycle controls,
@@ -51,8 +66,8 @@ and MCP are Talkies extensions.
 - CPU: two Whisper models, Canary-180M-Flash, Nemotron ASR via parakeet.cpp,
   four English Sherpa-ONNX Zipformer choices, Vosk small English, and two
   Kokoro TTS backends.
-- CUDA: the CPU set plus Parakeet-TDT, Canary 1B/Qwen ASR, and five Qwen3 TTS
-  variants.
+- CUDA: the CPU set plus Parakeet-TDT, Canary 1B/Qwen ASR, five Qwen3 TTS
+  variants, and Chatterbox Turbo.
 - Live ASR: bundled Nemotron, Sherpa-ONNX, and Vosk are native; bundled Whisper
   is a bounded rolling decoder. Sherpa and Vosk also work through the
   OpenAI-compatible file-transcription endpoint.
@@ -60,8 +75,41 @@ and MCP are Talkies extensions.
   bundled Nemotron CPU and CUDA entries admit two requests.
 - Streaming TTS: Qwen3 returns incremental raw PCM for
   `response_format="pcm"`; other TTS formats and Kokoro are buffered.
+- Expressive TTS: Chatterbox Turbo (English) takes 19 inline tags such as
+  `[sigh]`, `[whispering]` and `[laugh]` directly in the input text. Its output
+  carries a neural watermark applied by the upstream model.
+- Voice cloning: drop a `.wav` into `/data/custom-voices` and it appears on
+  `GET /v1/audio/voices`. Qwen3 pairs it with an optional sibling `.txt`
+  transcript; Chatterbox needs only the clip, longer than five seconds.
 
-Exact slugs, executors, and registry format: [Models and registries](docs/models.md).
+Exact slugs, executors, tag list, and registry format:
+[Models and registries](docs/models.md).
+
+### Prompting Chatterbox with emotion
+
+Tags go inline in `input`, in square brackets, lowercase. They are real tokens
+in the model's tokenizer, so only these 19 do anything — any other bracketed
+word is spoken as literal text:
+
+```
+[angry] [fear] [surprised] [whispering] [advertisement] [dramatic] [narration]
+[crying] [happy] [sarcastic] [clear throat] [sigh] [shush] [cough] [groan]
+[sniff] [gasp] [chuckle] [laugh]
+```
+
+```bash
+curl -s http://127.0.0.1:8000/v1/audio/speech \
+  -H 'Content-Type: application/json' \
+  -d '{
+        "model": "chatterbox-turbo",
+        "voice": "builtin",
+        "input": "Oh, that is hilarious. [chuckle] Anyway [sigh] back to work.",
+        "response_format": "mp3"
+      }' --output out.mp3
+```
+
+Swap `"voice"` for the name of any `.wav` you dropped in `/data/custom-voices`
+(extension stripped) to speak the same line in a cloned voice.
 
 ## Documentation
 
@@ -128,11 +176,17 @@ See [Operations and security](docs/operations.md) for the complete posture.
 
 ```bash
 make check                 # lint + unit tests in the dev image
+make lint                  # flake8 + mypy only
+make test-unit             # fast offline unit tests
+make run                   # run the CPU image locally
 make test-streaming        # real CPU native WebSocket ASR test
 make test-streaming-custom # real CPU Sherpa/Vosk WebSocket + HTTP tests
 make test-streaming-custom-cuda # real CUDA Sherpa WebSocket + HTTP test
+make compile-heavy         # regenerate the hash-locked ML requirements
 make build-all             # CPU and CUDA production images
 ```
+
+`make help` lists every target.
 
 Talkies is released under the [WTFPL](LICENSE). Model weights are downloaded at
 runtime and have their own terms; image component notices are in

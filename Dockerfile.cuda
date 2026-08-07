@@ -74,6 +74,18 @@ RUN --mount=type=cache,target=/root/.cache/uv \
         --index-strategy unsafe-best-match \
         -r requirements-heavy-cuda.txt
 
+# 3) chatterbox-turbo TTS. Separate from the file above on purpose — the header
+# of requirements-chatterbox.txt explains why these two wheels cannot go
+# through the shared resolver. Pure-python, --no-deps, hash-verified.
+COPY requirements-chatterbox.txt ./
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install --python /opt/venv/bin/python \
+        --no-config \
+        --require-hashes \
+        --no-deps \
+        --only-binary=:all: \
+        -r requirements-chatterbox.txt
+
 # -----------------------------------------------------------------------------
 # Precompiled parakeet.cpp shared C API used by the parakeet_cpp backend
 # (NVIDIA Parakeet TDT/CTC/RNNT + Nemotron-3.5-ASR via ggml/C++). The upstream

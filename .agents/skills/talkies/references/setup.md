@@ -54,13 +54,15 @@ slugs; GPU-only Qwen3-TTS slugs remain unavailable.
 | Image | Tag | Platforms | Models served | Image size |
 |---|---|---|---|---|
 | CPU | `psyb0t/talkies:latest` | `linux/amd64` | 2× Whisper, Canary-180m-Flash, Nemotron-3.5-ASR, Sherpa Zipformer ×4, Vosk, Kokoro-82M ×2 runtimes | ~3 GB |
-| CUDA | `psyb0t/talkies:latest-cuda` | `linux/amd64` | all twelve ASR + Kokoro-82M ×2 runtimes + Qwen3-TTS ×5 | ~11 GB |
+| CUDA | `psyb0t/talkies:latest-cuda` | `linux/amd64` | all twelve ASR + Kokoro-82M ×2 runtimes + Qwen3-TTS ×5 + Chatterbox Turbo | ~11 GB |
 
-The CPU image only ships ASR models that actually finish in a sane time without a GPU. Parakeet-TDT is autoregressive (slow on CPU). Canary-1B and Canary-Qwen-2.5B need the CUDA image with `--gpus all`; use the CPU image for CPU workloads. Kokoro-82M ships in both images — at 82M params it synthesizes faster than real-time on a 4-core CPU, no GPU needed.
+The CPU image only ships ASR models that actually finish in a sane time without a GPU. Parakeet-TDT is autoregressive (slow on CPU). Canary-1B and Canary-Qwen-2.5B need the CUDA image with `--gpus all`; use the CPU image for CPU workloads. Kokoro-82M ships in both images — at 82M params it synthesizes faster than real-time on a 4-core CPU, no GPU needed. Chatterbox Turbo is CUDA-only for the same reason as the heavier ASR models: it runs on CPU but measures roughly 5-10x slower than real-time, so it is not registered as a CPU slug.
 
 Both images bake `espeak-ng` into the runtime layer because Kokoro's G2P for es/fr/hi/it/pt routes through it via `misaki.espeak.EspeakG2P`. The Python `kokoro==0.9.4` package and its lightweight dependency chain (`misaki`, no `[ja]` / `[zh]` extras) are pinned alongside the rest of the ML stack in `Dockerfile` / `Dockerfile.cuda`.
 
 The CUDA image additionally bakes the `faster-qwen3-tts==0.2.6` MIT wrapper and three builtin Qwen3 reference voices (`alloy`, `echo`, `fable`) under `/opt/talkies/qwen3-voices/`. The model weights (`Qwen/Qwen3-TTS-12Hz-0.6B-Base`, Apache-2.0) are downloaded into `/data/models/qwen3-tts-0.6b/` at first boot like every other model.
+
+The CUDA image also bakes `chatterbox-tts==0.1.7` (MIT) and `s3tokenizer==0.3.0` (Apache-2.0) from a separate hash-pinned `requirements-chatterbox.txt`, installed `--no-deps` because their declared dependency metadata conflicts with the image's pinned torch/transformers and pulls tooling that has no place in a runtime image. The `ResembleAI/chatterbox-turbo` weights (MIT, ungated) land in `/data/models/chatterbox-turbo/` at first boot. Its voices come from `/data/custom-voices/` plus a `builtin` speaker shipped inside the checkpoint — the Qwen3 reference voices are deliberately not shared with it, since several are shorter than its 5-second reference-clip minimum.
 
 ## Environment Variables
 

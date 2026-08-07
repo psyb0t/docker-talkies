@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from .. import config
+from .chatterbox import ChatterboxBackend
 from .kokoro import KokoroBackend
 from .kokoro_nvidia import KokoroNvidiaBackend
 from .multitask import MultitaskBackend
@@ -124,6 +125,14 @@ def build_backends(registry: dict[str, dict], device: str) -> dict[str, Any]:
             continue
         if executor == "kokoro_nvidia":
             out[model_id] = KokoroNvidiaBackend(
+                model_id=model_id,
+                repo=repo,
+                model_path=model_path,
+                device=device,
+            )
+            continue
+        if executor == "chatterbox":
+            out[model_id] = ChatterboxBackend(
                 model_id=model_id,
                 repo=repo,
                 model_path=model_path,

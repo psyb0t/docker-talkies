@@ -191,6 +191,14 @@
         "Japanese",
         "Korean"
       ]
+    },
+    "chatterbox-turbo": {
+      "repo": "ResembleAI/chatterbox-turbo",
+      "executor": "chatterbox",
+      "modality": "tts",
+      "default_voice": "builtin",
+      "languages": ["en"],
+      "download_patterns": ["ve.safetensors", "t3_turbo_v1.safetensors", "s3gen_meanflow.safetensors", "conds.pt", "merges.txt", "*.json"]
     }
   }
 }
