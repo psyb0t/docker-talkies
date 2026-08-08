@@ -125,7 +125,7 @@ Every entry needs a `repo`. Optional `max_concurrency` is an integer from 1 to
 1024 and limits active inference requests across every API surface. `executor`
 defaults to `whisper` and must be one
 of `whisper`, `parakeet`, `parakeet_cpp`, `canary_multitask`, `canary_salm`,
-`kokoro`, `kokoro_nvidia`, `qwen3_tts`, `sherpa`, or `vosk`. The entrypoint
+`kokoro`, `kokoro_nvidia`, `qwen3_tts`, `sherpa`, `vosk`, or `chatterbox`. The entrypoint
 downloads a selected repository into `/data/models/<slug>`. `revision`, when
 set, is supplied to Hugging Face snapshot download; pin it to an immutable
 commit for reproducible contents. An optional `download_patterns` array limits

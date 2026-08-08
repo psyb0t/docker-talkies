@@ -24,7 +24,7 @@ docker run -d --name talkies \
 
 ### CUDA
 
-Serves all twelve ASR models plus both TTS engines / 3 backends (`kokoro-82m`, `kokoro-82m-nvidia`, and the 5 Qwen3-TTS slugs). Requires the NVIDIA Container Toolkit on the host.
+Serves all twelve ASR models plus all three TTS engines / 4 backends (`kokoro-82m`, `kokoro-82m-nvidia`, the 5 Qwen3-TTS slugs, and `chatterbox-turbo`). Requires the NVIDIA Container Toolkit on the host.
 
 Nemotron runs through the SHA-256-pinned upstream parakeet.cpp v0.5.0 CUDA 12
 bundle in this image, so both file transcription and native WebSocket sessions

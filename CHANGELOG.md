@@ -4,6 +4,26 @@ All notable changes per release. Versions follow [semver](https://semver.org)
 pre-1.0 conventions: minor bumps may include breaking changes (called out
 explicitly with **Breaking.**), patch bumps are docs / build / fixes only.
 
+## v0.15.3 — 2026-08-08
+
+Documentation. No code changed.
+
+- **`docs/models.md` was missing an executor.** `VALID_EXECUTORS` in
+  `src/talkies/config.py` lists eleven; the "must be one of" list in the docs
+  named ten, omitting `chatterbox`. A `models.json` entry declaring it would be
+  accepted by the validator while the docs said it was invalid.
+- The agent skill's TTS section still described the surface as it stood before
+  Chatterbox Turbo landed — "2 engines / 3 backends", with `chatterbox-turbo`
+  absent from the slug table, the `/v1/audio/speech` `model` and `voice` field
+  notes, and the CUDA image's model list. It now reads 3 engines / 4 backends
+  across 8 slugs, which matches the eight `modality: tts` entries in
+  `models.json`.
+- Documented what is specific to `chatterbox-turbo`: English only
+  (`languages: ["en"]`), the `builtin` speaker or any `.wav` under
+  `/data/custom-voices/` longer than `MIN_REFERENCE_SECONDS` (5s — shorter
+  clips are rejected), `speed` ignored, and the PerTh neural watermark upstream
+  applies to every waveform.
+
 ## v0.15.2 — 2026-08-07
 
 Fixes Chatterbox synthesis failing at model load in the CUDA image.

@@ -169,7 +169,7 @@ Pick by use case:
 
 ### TTS
 
-2 engines / 3 backends. Kokoro ships in two runtimes (`kokoro-82m` PyTorch, `kokoro-82m-nvidia` ONNX/ORT) — same weights, same voice catalog, same wire format. Qwen3-TTS ships 5 CUDA-only slugs across three modes (base cloning / custom_voice preset speakers / voice_design). Mode is implicit in the slug — see [Qwen3-TTS Modes](#qwen3-tts-modes).
+3 engines / 4 backends across 8 slugs. Kokoro ships in two runtimes (`kokoro-82m` PyTorch, `kokoro-82m-nvidia` ONNX/ORT) — same weights, same voice catalog, same wire format. Qwen3-TTS ships 5 CUDA-only slugs across three modes (base cloning / custom_voice preset speakers / voice_design). Mode is implicit in the slug — see [Qwen3-TTS Modes](#qwen3-tts-modes). `chatterbox-turbo` (CUDA-only, English) rounds out the set — 19 inline emotion tags, transcript-free voice cloning; see [When To Use](#when-to-use) above.
 
 | Slug | Family | Mode | CPU | CUDA | Languages | Voices |
 |---|---|---|---|---|---|---|
@@ -180,12 +180,14 @@ Pick by use case:
 | `qwen3-tts-0.6b-custom` | Qwen3-TTS (24 kHz) | custom_voice | no | yes | en, zh, ja, ko | 9 preset speakers (`instructions` dropped — 0.6B limitation) |
 | `qwen3-tts-1.7b-custom` | Qwen3-TTS (24 kHz) | custom_voice | no | yes | en, zh, ja, ko | 9 preset speakers + emotion via `instructions` |
 | `qwen3-tts-1.7b-design` | Qwen3-TTS (24 kHz) | voice_design | no | yes | en, zh, ja, ko | voice synthesized from NL description in `instructions` (required) |
+| `chatterbox-turbo` | Chatterbox Turbo (24 kHz, buffered only) | — | no | yes | English only | `builtin` speaker, or any `.wav` (>5s) under `/data/custom-voices/` |
 
 Pick by use case:
 - **General-purpose multi-voice TTS:** `kokoro-82m` — fast, 41 baked voices, runs on CPU. Use `kokoro-82m-nvidia` for the ONNX/ORT execution path (CUDA EP on the CUDA image, CPU EP otherwise).
 - **Voice cloning from a reference clip:** `qwen3-tts-0.6b` / `qwen3-tts-1.7b` — drop a `.wav` into `/data/custom-voices/`, immediately usable. CUDA required.
 - **Preset speakers (no reference WAV):** `qwen3-tts-0.6b-custom` / `qwen3-tts-1.7b-custom` — 9 baked speakers; the 1.7B honours `instructions` for emotion. CUDA required.
 - **Invent a voice from a description:** `qwen3-tts-1.7b-design` — the NL description goes in `instructions`. CUDA required.
+- **Expressive English delivery, transcript-free cloning:** `chatterbox-turbo` — 19 inline emotion tags in `input`, clones from a bare `.wav` (no sibling transcript needed, clip must be longer than 5 seconds). English only, CUDA required, output always carries a neural watermark.
 
 `canary-qwen-2.5b` produces no segment/word timestamps — `verbose_json.segments` and `.words` come back empty, `srt`/`vtt` collapse to a single full-duration cue. Transcription itself is whole-file. Use a Whisper or Canary multitask slug if you need timing.
 
@@ -332,11 +334,11 @@ curl -s $TALKIES_URL/v1/audio/speech \
 
 | Field | Required | Default | Notes |
 |---|---|---|---|
-| `model` | yes | — | TTS model slug. Kokoro: `kokoro-82m`, `kokoro-82m-nvidia`. Qwen3-TTS: `qwen3-tts-0.6b`, `qwen3-tts-1.7b` (base/cloning), `qwen3-tts-0.6b-custom`, `qwen3-tts-1.7b-custom` (preset speakers), `qwen3-tts-1.7b-design` (voice from NL description). Unknown → 404. ASR slug → 400. |
+| `model` | yes | — | TTS model slug. Kokoro: `kokoro-82m`, `kokoro-82m-nvidia`. Qwen3-TTS: `qwen3-tts-0.6b`, `qwen3-tts-1.7b` (base/cloning), `qwen3-tts-0.6b-custom`, `qwen3-tts-1.7b-custom` (preset speakers), `qwen3-tts-1.7b-design` (voice from NL description). Chatterbox: `chatterbox-turbo` (English only). Unknown → 404. ASR slug → 400. |
 | `input` | yes | — | Text to synthesize. Empty / whitespace-only → 400. No fixed length cap; for very long inputs split client-side. |
-| `voice` | no | model `default_voice` | Semantics shift per Qwen3 mode (see [Qwen3-TTS Modes](#qwen3-tts-modes)). Kokoro: voice name (default `af_heart`). Qwen3 `base`: path of a reference WAV (default `alloy`). Qwen3 `custom_voice`: one of the 9 preset speakers (default `Vivian`). Qwen3 `voice_design`: ignored — sentinel `"design"`. Unknown → 400 with catalog listed. |
+| `voice` | no | model `default_voice` | Semantics shift per Qwen3 mode (see [Qwen3-TTS Modes](#qwen3-tts-modes)). Kokoro: voice name (default `af_heart`). Qwen3 `base`: path of a reference WAV (default `alloy`). Qwen3 `custom_voice`: one of the 9 preset speakers (default `Vivian`). Qwen3 `voice_design`: ignored — sentinel `"design"`. `chatterbox-turbo`: `builtin` (default) or the name of a `.wav` under `/data/custom-voices/`, longer than 5 seconds — shorter clips → 400. Unknown → 400 with catalog listed. |
 | `response_format` | no | `mp3` | `mp3` / `opus` / `aac` / `flac` / `wav` / `pcm`. |
-| `speed` | no | `1.0` | Playback rate, Kokoro only. Clamped to `[0.25, 4.0]`. **Ignored** by every Qwen3-TTS slug (no speed control in Qwen3-TTS). |
+| `speed` | no | `1.0` | Playback rate, Kokoro only. Clamped to `[0.25, 4.0]`. **Ignored** by every Qwen3-TTS slug (no speed control in Qwen3-TTS) and by `chatterbox-turbo`. |
 | `instructions` | no | — | Free-form style prompt. **Required** for `qwen3-tts-1.7b-design` (the NL voice description; empty → 400). **Honoured** by Qwen3-TTS `base` mode and `qwen3-tts-1.7b-custom` (threaded as `instruct`). **Dropped** by `qwen3-tts-0.6b-custom` (0.6B CustomVoice checkpoint limitation — logs a WARNING) and both Kokoro slugs (no instruction input). Accepted on every slug for OpenAI parity. |
 | `language` | no | model `default_language` (`English`) | **Non-OpenAI extra field** (send via `extra_body={"language": "..."}` on official SDKs). Selects the spoken language for Qwen3 `custom_voice` / `voice_design`; `base` mode reads it from the voice's sibling `.lang` file. Silently ignored by Kokoro. |
 | `temperature` | no | `0.9` | **Non-OpenAI extra, Qwen3-TTS only** (`extra_body`). Sampler temperature, `[0.0, 2.0]`. Ignored by Kokoro. |
