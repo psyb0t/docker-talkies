@@ -407,6 +407,51 @@ def test_shipped_registry_executors_are_all_valid(monkeypatch, registry_name):
     )
 
 
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("true", True),
+        ("1", True),
+        ("yes", True),
+        ("TRUE", True),
+        ("  true  ", True),
+        # Unset and blank both mean "operator said nothing", which must keep the
+        # watermark on. This flag defaults ON, unlike the others, so an empty
+        # string collapsing to false would silently strip it.
+        ("", True),
+        ("   ", True),
+        ("false", False),
+        ("0", False),
+        ("no", False),
+        ("NO", False),
+    ],
+)
+def test_chatterbox_watermark_flag_parses(monkeypatch, fake_registry, value, expected):
+    cfg = _reload_config(
+        monkeypatch, fake_registry, TALKIES_CHATTERBOX_WATERMARK=value
+    )
+    assert cfg.CHATTERBOX_WATERMARK is expected
+
+
+def test_chatterbox_watermark_defaults_on_when_unset(monkeypatch, fake_registry):
+    monkeypatch.delenv("TALKIES_CHATTERBOX_WATERMARK", raising=False)
+    monkeypatch.setenv("TALKIES_MODELS_FILE", str(fake_registry))
+    sys.modules.pop("talkies.config", None)
+    cfg = importlib.import_module("talkies.config")
+    assert cfg.CHATTERBOX_WATERMARK is True
+
+
+@pytest.mark.parametrize("value", ["maybe", "on", "off", "2", "-1"])
+def test_chatterbox_watermark_rejects_invalid_values(
+    monkeypatch, fake_registry, value
+):
+    monkeypatch.setenv("TALKIES_MODELS_FILE", str(fake_registry))
+    monkeypatch.setenv("TALKIES_CHATTERBOX_WATERMARK", value)
+    sys.modules.pop("talkies.config", None)
+    with pytest.raises(ValueError, match="TALKIES_CHATTERBOX_WATERMARK"):
+        importlib.import_module("talkies.config")
+
+
 @pytest.mark.parametrize("registry_name", _SHIPPED_REGISTRIES)
 def test_shipped_registry_loads(monkeypatch, registry_name):
     path = _registry_path(registry_name)

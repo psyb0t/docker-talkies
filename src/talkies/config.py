@@ -205,6 +205,23 @@ if _BLOCK_PRIVATE_RAW not in ("", "true", "false", "1", "0", "yes", "no"):
     )
 BLOCK_PRIVATE_DOWNLOADS: bool = _BLOCK_PRIVATE_RAW in ("true", "1", "yes")
 
+# Chatterbox embeds Resemble's PerTh neural watermark in every waveform it
+# generates. Upstream applies it unconditionally with no option to disable, so
+# the backend substitutes a passthrough when this is false. Defaults on to match
+# upstream behaviour.
+_CHATTERBOX_WATERMARK_RAW: str = (
+    os.environ.get("TALKIES_CHATTERBOX_WATERMARK", "true").strip().lower()
+)
+if _CHATTERBOX_WATERMARK_RAW not in ("", "true", "false", "1", "0", "yes", "no"):
+    raise ValueError(
+        f"TALKIES_CHATTERBOX_WATERMARK={_CHATTERBOX_WATERMARK_RAW!r} must be "
+        "true/false/1/0/yes/no"
+    )
+# Empty means unset, which keeps the ON default. The flags above default off, so
+# empty collapsing to false matches their default; here it would strip the
+# watermark on a blank value.
+CHATTERBOX_WATERMARK: bool = _CHATTERBOX_WATERMARK_RAW in ("", "true", "1", "yes")
+
 PRELOAD: list[str] = _list_env("TALKIES_PRELOAD")
 ENABLED_MODELS: list[str] = _list_env("TALKIES_ENABLED_MODELS")
 

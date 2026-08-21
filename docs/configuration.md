@@ -30,6 +30,7 @@ unsets it while fetching selected snapshots, then starts the application.
 | `TALKIES_MAX_UPLOAD_BYTES` | `104857600` | Multipart transcription and file-stage upload cap |
 | `TALKIES_MAX_DOWNLOAD_BYTES` | `1073741824` | Remote `file_path` download cap |
 | `TALKIES_BLOCK_PRIVATE_DOWNLOADS` | `false` | Block private, loopback, link-local, multicast, and metadata URL targets |
+| `TALKIES_CHATTERBOX_WATERMARK` | `true` | Embed Resemble's PerTh neural watermark in `chatterbox-turbo` output. Set false to emit unmarked audio |
 
 ## File-transcription VAD
 

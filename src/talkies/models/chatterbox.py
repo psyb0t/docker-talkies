@@ -208,7 +208,17 @@ class ChatterboxBackend:
         from chatterbox.tts_turbo import ChatterboxTurboTTS
 
         device = "cuda" if self._device.startswith("cuda") else "cpu"
-        return ChatterboxTurboTTS.from_local(self.model_path, device)
+        model = ChatterboxTurboTTS.from_local(self.model_path, device)
+        if not config.CHATTERBOX_WATERMARK:
+            # generate() calls self.watermarker.apply_watermark unconditionally,
+            # and watermarker is a plain instance attribute, so swapping it here
+            # disables the mark without patching or vendoring upstream.
+            model.watermarker = _PassthroughWatermarker()
+            self._log.info(
+                "watermarking disabled, reason=%s",
+                "TALKIES_CHATTERBOX_WATERMARK",
+            )
+        return model
 
     async def synthesize(
         self,
@@ -300,6 +310,17 @@ class ChatterboxBackend:
         except ImportError:
             pass
         self._log.info("unloaded %s", self.repo)
+
+
+class _PassthroughWatermarker:
+    """Stand-in for perth.PerthImplicitWatermarker that returns audio unchanged.
+
+    Matches the upstream signature ``(signal, sample_rate, **_)`` so it drops
+    into ``model.watermarker`` without generate() knowing the difference.
+    """
+
+    def apply_watermark(self, signal: Any, sample_rate: int, **_: Any) -> Any:
+        return signal
 
 
 def _resolve_dir(path: Path) -> Path | None:

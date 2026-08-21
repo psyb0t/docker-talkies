@@ -28,7 +28,9 @@ sys.modules["talkies.models"] = _MODELS_PACKAGE
 from talkies.models.chatterbox import (  # noqa: E402
     BUILTIN_VOICE,
     MIN_REFERENCE_SECONDS,
+    SAMPLE_RATE,
     ChatterboxBackend,
+    _PassthroughWatermarker,
 )
 
 _SAMPLE_RATE = 24000
@@ -192,3 +194,23 @@ def test_load_reports_missing_checkpoint_file(voices_dir, make_backend):
     backend = make_backend()
     with pytest.raises(FileNotFoundError, match="ve.safetensors"):
         backend._load_sync()
+
+
+@pytest.mark.parametrize(
+    ("signal", "kwargs"),
+    [
+        ("wav", {"sample_rate": SAMPLE_RATE}),
+        ("wav", {"sample_rate": SAMPLE_RATE, "unexpected_kwarg": True}),
+    ],
+)
+def test_passthrough_watermarker_returns_signal_unchanged(signal, kwargs):
+    assert _PassthroughWatermarker().apply_watermark(signal, **kwargs) is signal
+
+
+def test_passthrough_watermarker_accepts_positional_sample_rate():
+    """Upstream's signature is (signal, sample_rate, **_) and generate() passes
+    sample_rate by keyword. Accepting both shapes means a future upstream call
+    style cannot break synthesis at request time.
+    """
+    signal = "wav"
+    assert _PassthroughWatermarker().apply_watermark(signal, SAMPLE_RATE) is signal

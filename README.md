@@ -77,7 +77,8 @@ and MCP are Talkies extensions.
   `response_format="pcm"`; other TTS formats and Kokoro are buffered.
 - Expressive TTS: Chatterbox Turbo (English) takes 19 inline tags such as
   `[sigh]`, `[whispering]` and `[laugh]` directly in the input text. Its output
-  carries a neural watermark applied by the upstream model.
+  carries a neural watermark by default; set `TALKIES_CHATTERBOX_WATERMARK` to
+  false to emit unmarked audio.
 - Voice cloning: drop a `.wav` into `/data/custom-voices` and it appears on
   `GET /v1/audio/voices`. Qwen3 pairs it with an optional sibling `.txt`
   transcript; Chatterbox needs only the clip, longer than five seconds.

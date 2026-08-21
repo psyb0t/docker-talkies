@@ -101,8 +101,10 @@ They are real tokens in the model's tokenizer, so only these 19 work:
 ```
 
 Every waveform this model produces carries Resemble AI's PerTh neural
-watermark. The upstream package applies it unconditionally and exposes no
-option to turn it off.
+watermark. The upstream package applies it unconditionally, so Talkies
+substitutes a passthrough when `TALKIES_CHATTERBOX_WATERMARK` is false. It
+defaults to true, and the backend logs an info line when it is off. See
+[Configuration](configuration.md).
 
 The checkpoint is MIT-licensed and ungated, so the entrypoint downloads it
 without a Hugging Face token. Only the files the model actually loads are

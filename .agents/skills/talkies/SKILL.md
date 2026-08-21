@@ -60,7 +60,7 @@ This skill is **not** low-risk to orchestrate blindly — it issues local shell 
 - `qwen3-tts-0.6b` `speed` parameter — Qwen3-TTS has no playback-rate control. Field is accepted for OpenAI compat but **ignored** (only Kokoro honors `speed`; `chatterbox-turbo` ignores it too).
 - `chatterbox-turbo` for anything but English — it is an English-only checkpoint. Use Kokoro or Qwen3-TTS for other languages.
 - `chatterbox-turbo` on CPU — the slug is registered in the CUDA image only. The model does run on CPU but measures roughly 5-10x slower than realtime, so it is not offered as a CPU slug.
-- `chatterbox-turbo` where output must be unwatermarked — every waveform it produces carries a neural watermark applied unconditionally by the upstream package, which exposes no option to disable it.
+- `chatterbox-turbo` with default settings where output must be unwatermarked. Every waveform carries Resemble AI's PerTh neural watermark, which the upstream package applies unconditionally. The server can turn it off: set `TALKIES_CHATTERBOX_WATERMARK=false` on the container. That is an operator-side setting, not a per-request one, so a caller cannot change it through the API.
 - `chatterbox-turbo` reference clips of 5 seconds or shorter — rejected with a 400. Supply a longer clip.
 - arm64 hosts — `linux/amd64` only.
 

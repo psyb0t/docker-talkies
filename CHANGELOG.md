@@ -4,6 +4,32 @@ All notable changes per release. Versions follow [semver](https://semver.org)
 pre-1.0 conventions: minor bumps may include breaking changes (called out
 explicitly with **Breaking.**), patch bumps are docs / build / fixes only.
 
+## v0.16.0 — 2026-08-08
+
+Operators can now turn off the Chatterbox watermark.
+
+### Added
+
+- `TALKIES_CHATTERBOX_WATERMARK` controls whether `chatterbox-turbo` embeds
+  Resemble AI's PerTh neural watermark in the audio it generates. It accepts
+  `true/false/1/0/yes/no`, defaults to `true`, and rejects any other value at
+  startup. Unset and blank both keep the watermark on, so a stray empty value
+  cannot silently strip it.
+- Setting it to false substitutes a passthrough watermarker after the model
+  loads. `chatterbox-tts` calls `self.watermarker.apply_watermark` on every
+  generation and that attribute is writable, so Talkies patches nothing
+  upstream. The backend logs an info record when the watermark is off.
+- Of the three bundled TTS engines only Chatterbox watermarks. Kokoro and
+  Qwen3-TTS embed nothing, so this one setting covers every watermark the
+  images can produce.
+
+### Fixed
+
+- `pyproject.toml` still declared `0.15.2` after the v0.15.3 tag, because that
+  release staged documentation only. `make version` therefore printed a tag
+  that was already published, and an image built from it would have collided
+  with the existing one. The canonical version now moves with the tag again.
+
 ## v0.15.3 — 2026-08-08
 
 Documentation. No code changed.
