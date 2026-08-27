@@ -24,7 +24,7 @@ docker run -d --name talkies \
 
 ### CUDA
 
-Serves all twelve ASR models plus all three TTS engines / 4 backends (`kokoro-82m`, `kokoro-82m-nvidia`, the 5 Qwen3-TTS slugs, and `chatterbox-turbo`). Requires the NVIDIA Container Toolkit on the host.
+Serves all fourteen ASR models plus all three TTS engines / 4 backends (`kokoro-82m`, `kokoro-82m-nvidia`, the 5 Qwen3-TTS slugs, and `chatterbox-turbo`). Requires the NVIDIA Container Toolkit on the host.
 
 Nemotron runs through the SHA-256-pinned upstream parakeet.cpp v0.5.0 CUDA 12
 bundle in this image, so both file transcription and native WebSocket sessions
@@ -53,8 +53,8 @@ slugs; GPU-only Qwen3-TTS slugs remain unavailable.
 
 | Image | Tag | Platforms | Models served | Image size |
 |---|---|---|---|---|
-| CPU | `psyb0t/talkies:latest` | `linux/amd64` | 2× Whisper, Canary-180m-Flash, Nemotron-3.5-ASR, Sherpa Zipformer ×4, Vosk, Kokoro-82M ×2 runtimes | ~3 GB |
-| CUDA | `psyb0t/talkies:latest-cuda` | `linux/amd64` | all twelve ASR + Kokoro-82M ×2 runtimes + Qwen3-TTS ×5 + Chatterbox Turbo | ~11 GB |
+| CPU | `psyb0t/talkies:latest` | `linux/amd64` | 2× Whisper, Canary-180m-Flash, Nemotron-3.5-ASR, Sherpa Zipformer ×4, Vosk, wav2vec2 + ZIPA phoneme, Kokoro-82M ×2 runtimes | ~3 GB |
+| CUDA | `psyb0t/talkies:latest-cuda` | `linux/amd64` | all fourteen ASR + Kokoro-82M ×2 runtimes + Qwen3-TTS ×5 + Chatterbox Turbo | ~11 GB |
 
 The CPU image only ships ASR models that actually finish in a sane time without a GPU. Parakeet-TDT is autoregressive (slow on CPU). Canary-1B and Canary-Qwen-2.5B need the CUDA image with `--gpus all`; use the CPU image for CPU workloads. Kokoro-82M ships in both images — at 82M params it synthesizes faster than real-time on a 4-core CPU, no GPU needed. Chatterbox Turbo is CUDA-only for the same reason as the heavier ASR models: it runs on CPU but measures roughly 5-10x slower than real-time, so it is not registered as a CPU slug.
 
@@ -260,7 +260,7 @@ File structure:
 |---|---|---|
 | `repo` | yes | HuggingFace repo id. Pulled via `snapshot_download(local_dir=$TALKIES_DATA_DIR/models/<slug>)` — flat directory keyed by slug, no HF cache indirection. |
 | `revision` | no | Immutable Hugging Face commit SHA to download. Pin this for reproducible custom registries. |
-| `executor` | yes | One of `whisper`, `parakeet`, `parakeet_cpp`, `canary_multitask`, `canary_salm`, `sherpa`, `vosk`, `kokoro`, `kokoro_nvidia`, `qwen3_tts`, `chatterbox`. Other values fail startup — the allowlist is `VALID_EXECUTORS` in `src/talkies/config.py`, and `load_registry()` runs at server import, so an unknown executor stops the whole process rather than disabling one model. |
+| `executor` | yes | One of `whisper`, `parakeet`, `parakeet_cpp`, `canary_multitask`, `canary_salm`, `sherpa`, `sherpa_offline_ctc`, `vosk`, `kokoro`, `kokoro_nvidia`, `qwen3_tts`, `chatterbox`, `wav2vec2_phoneme`. Other values fail startup — the allowlist is `VALID_EXECUTORS` in `src/talkies/config.py`, and `load_registry()` runs at server import, so an unknown executor stops the whole process rather than disabling one model. |
 | `modality` | no | `asr` (default) or `tts`. Drives endpoint guards (`/v1/audio/transcriptions` requires ASR; `/v1/audio/speech` requires TTS) and the `modality` field on `/v1/models` entries. The `kokoro`, `qwen3_tts` and `chatterbox` executors imply `tts`; the seven ASR executors imply `asr`. |
 | `download_patterns` | no | Non-empty list of static repository-relative paths passed to Hugging Face `snapshot_download(..., allow_patterns=...)`. Use it to limit a multi-variant repository to the files selected by this registry entry. |
 | `default_source_lang` | no | ASR only. Used when the request omits `language`. |

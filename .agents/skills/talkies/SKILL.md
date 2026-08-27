@@ -1,6 +1,6 @@
 ---
 name: talkies
-description: Self-hosted OpenAI-compatible speech service. /v1/audio/transcriptions fronts 12 open ASR models (Whisper, Parakeet, Nemotron-3.5-ASR, Canary, Sherpa-ONNX, Vosk); /v1/audio/transcriptions/stream accepts live PCM over WebSocket. /v1/audio/speech fronts 3 TTS engines / 4 backends — Kokoro-82M (41 baked voices, PyTorch + ONNX runtimes), the CUDA-only Qwen3-TTS family (voice cloning, preset speakers, voice design), and the CUDA-only Chatterbox Turbo (English, 19 inline emotion tags, transcript-free cloning). Stereo diarization, URL fetching, six ASR/file-staging MCP tools, bearer auth.
+description: Self-hosted OpenAI-compatible speech service. /v1/audio/transcriptions fronts 14 open ASR models (Whisper, Parakeet, Nemotron-3.5-ASR, Canary, Sherpa-ONNX, Vosk, plus wav2vec2 and ZIPA phoneme recognizers that emit IPA); /v1/audio/transcriptions/stream accepts live PCM over WebSocket. /v1/audio/speech fronts 3 TTS engines / 4 backends — Kokoro-82M (41 baked voices, PyTorch + ONNX runtimes), the CUDA-only Qwen3-TTS family (voice cloning, preset speakers, voice design), and the CUDA-only Chatterbox Turbo (English, 19 inline emotion tags, transcript-free cloning). Stereo diarization, URL fetching, six ASR/file-staging MCP tools, bearer auth.
 homepage: https://github.com/psyb0t/docker-talkies
 user-invocable: true
 permissions:
@@ -15,7 +15,7 @@ metadata:
 
 Self-hosted speech service — ASR and TTS, one container. OpenAI-compatible wire shape on both endpoints; point an OpenAI client at it, change the model slug, done.
 
-ASR (`POST /v1/audio/transcriptions`): twelve bundled slugs — `whisper-large-v3`, `whisper-large-v3-turbo`, `parakeet-tdt-0.6b-v3`, `nemotron-3.5-asr-0.6b`, `canary-180m-flash`, `canary-1b-flash`, `canary-qwen-2.5b`, four selectable English Sherpa Zipformer variants, and `vosk-small-en-us-0.15`.
+ASR (`POST /v1/audio/transcriptions`): fourteen bundled slugs — `whisper-large-v3`, `whisper-large-v3-turbo`, `parakeet-tdt-0.6b-v3`, `nemotron-3.5-asr-0.6b`, `canary-180m-flash`, `canary-1b-flash`, `canary-qwen-2.5b`, four selectable English Sherpa Zipformer variants, `vosk-small-en-us-0.15`, and two phoneme recognizers, `wav2vec2-xlsr-53-espeak` and `zipa-ipa`, that return the IPA phones spoken instead of words.
 
 TTS (`POST /v1/audio/speech`): 3 engines / 4 backends across 8 slugs — `kokoro-82m` (PyTorch) and `kokoro-82m-nvidia` (ONNX/ORT) with 41 baked voices across en/es/fr/hi/it/pt, plus the CUDA-only Qwen3-TTS family: `qwen3-tts-0.6b` / `qwen3-tts-1.7b` (voice cloning from reference clips), `qwen3-tts-0.6b-custom` / `qwen3-tts-1.7b-custom` (9 preset speakers), `qwen3-tts-1.7b-design` (voice from an NL description), plus the CUDA-only `chatterbox-turbo` (English only; 19 inline emotion tags; clones from a reference `.wav` with no transcript). Discover voices via `GET /v1/audio/voices`.
 
@@ -160,12 +160,15 @@ Vosk model-registry entries.
 | `sherpa-zipformer-en-int8-left-64` | Sherpa-ONNX Zipformer INT8 | yes | yes | English only | smaller native live ASR variant |
 | `sherpa-zipformer-en-int8-left-128` | Sherpa-ONNX Zipformer INT8 | yes | yes | English only | smaller native live ASR variant |
 | `vosk-small-en-us-0.15` | Vosk | yes | yes | English only | native live ASR; CPU decoder |
+| `wav2vec2-xlsr-53-espeak` | wav2vec2 CTC phoneme | yes | yes | multilingual | IPA phones, not words; eSpeak alphabet |
+| `zipa-ipa` | ZIPA (Zipformer CTC phoneme) | yes | yes | multilingual | IPA phones, not words; 71 MB, very fast |
 
 Pick by use case:
 - **General-purpose:** `whisper-large-v3-turbo`.
 - **English-only, max accuracy on GPU:** `canary-qwen-2.5b` (but no per-segment timestamps).
 - **Translation EN↔DE/FR/ES:** `canary-1b-flash` (requires custom model registry — see [Translation](#translation)).
 - **Low-overhead live English ASR:** one of the Sherpa Zipformer variants or `vosk-small-en-us-0.15`; Sherpa uses CUDA in the CUDA image, while Vosk remains CPU-decoded.
+- **Phones, not words (pronunciation checks, phonetics):** `wav2vec2-xlsr-53-espeak` or `zipa-ipa`. Both return a space-separated IPA stream with per-phone timestamps and run no language model, so mispronunciations are not corrected away. `zipa-ipa` is the small fast pick; `wav2vec2-xlsr-53-espeak` is the larger transformers-native one.
 
 ### TTS
 

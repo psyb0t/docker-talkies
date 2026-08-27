@@ -253,8 +253,10 @@ VALID_EXECUTORS = (
     "kokoro_nvidia",
     "qwen3_tts",
     "sherpa",
+    "sherpa_offline_ctc",
     "vosk",
     "chatterbox",
+    "wav2vec2_phoneme",
 )
 
 

@@ -4,6 +4,37 @@ All notable changes per release. Versions follow [semver](https://semver.org)
 pre-1.0 conventions: minor bumps may include breaking changes (called out
 explicitly with **Breaking.**), patch bumps are docs / build / fixes only.
 
+## v0.17.0 — 2026-08-27
+
+Two ASR models now return the phones that were spoken instead of words.
+
+### Added
+
+- Two phoneme-recognition ASR slugs on the OpenAI-compatible transcription
+  endpoint. Unlike the word-level models they carry no language model and no
+  lexicon, so a mispronunciation surfaces as the phones that were said rather
+  than being corrected to the nearest real word. Both return a space-separated
+  IPA phone stream in `text`, one segment per file, and per-phone `words` with
+  start/end times when timestamps are requested, so `verbose_json`, `srt`,
+  `vtt` and `timestamp_granularities` behave as they do for the other ASR
+  models. Both are in the CPU and CUDA images.
+- `wav2vec2-xlsr-53-espeak` (`facebook/wav2vec2-xlsr-53-espeak-cv-ft`, executor
+  `wav2vec2_phoneme`) is a multilingual wav2vec2 CTC model that emits eSpeak
+  IPA, the same phone alphabet the Kokoro G2P path uses. It adds no image
+  dependency, `Wav2Vec2ForCTC` already ships with the bundled transformers.
+  Audio past `TALKIES_VAD_CHUNK_THRESHOLD` is VAD-chunked before decoding.
+  Weights are Apache-2.0.
+- `zipa-ipa` (`anyspeech/zipa-small-crctc-500k`, executor
+  `sherpa_offline_ctc`) is a Zipformer IPA CTC model served through the
+  sherpa-onnx runtime already in the images. It is a 71 MB int8 download and
+  decodes a whole file in one pass at tens of times realtime on CPU. The
+  weights repository carries no license tag; the checkpoint lineage is
+  Apache-2.0, and the weights download at runtime rather than shipping in the
+  image.
+- `sherpa_offline_ctc` is a new registry executor, a non-streaming
+  `OfflineRecognizer` distinct from the streaming `sherpa` executor. It takes
+  the same `sherpa_config` shape (`model`, `tokens`) and `download_patterns`.
+
 ## v0.16.0 — 2026-08-08
 
 Operators can now turn off the Chatterbox watermark.

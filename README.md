@@ -14,6 +14,7 @@ staging, model lifecycle controls, and an MCP endpoint for ASR workflows.
 - [Start here](#start-here)
 - [What it provides](#what-it-provides)
 - [Models at a glance](#models-at-a-glance)
+  - [Reading phonemes](#reading-phonemes)
   - [Prompting Chatterbox with emotion](#prompting-chatterbox-with-emotion)
 - [Documentation](#documentation)
 - [Agent integrations](#agent-integrations)
@@ -64,13 +65,18 @@ and MCP are Talkies extensions.
 ## Models at a glance
 
 - CPU: two Whisper models, Canary-180M-Flash, Nemotron ASR via parakeet.cpp,
-  four English Sherpa-ONNX Zipformer choices, Vosk small English, and two
-  Kokoro TTS backends.
+  four English Sherpa-ONNX Zipformer choices, Vosk small English, two phoneme
+  recognizers, and two Kokoro TTS backends.
 - CUDA: the CPU set plus Parakeet-TDT, Canary 1B/Qwen ASR, five Qwen3 TTS
   variants, and Chatterbox Turbo.
 - Live ASR: bundled Nemotron, Sherpa-ONNX, and Vosk are native; bundled Whisper
   is a bounded rolling decoder. Sherpa and Vosk also work through the
   OpenAI-compatible file-transcription endpoint.
+- Phoneme recognition: `wav2vec2-xlsr-53-espeak` and `zipa-ipa` return the IPA
+  phones that were spoken, not words, with no language model correcting them
+  toward the nearest dictionary entry. Same transcription endpoint and
+  timestamp options as the other ASR models; see
+  [Phoneme recognition](docs/models.md#phoneme-recognition).
 - Per-model concurrency limits cover WebSocket, HTTP, MCP, ASR, and TTS; the
   bundled Nemotron CPU and CUDA entries admit two requests.
 - Streaming TTS: Qwen3 returns incremental raw PCM for
@@ -85,6 +91,23 @@ and MCP are Talkies extensions.
 
 Exact slugs, executors, tag list, and registry format:
 [Models and registries](docs/models.md).
+
+### Reading phonemes
+
+`wav2vec2-xlsr-53-espeak` and `zipa-ipa` use the same transcription call as
+every other ASR slug; only the model changes. `text` comes back as a
+space-separated IPA phone stream rather than words, and no language model
+corrects a mispronunciation toward a real word.
+
+```bash
+curl -s http://127.0.0.1:8000/v1/audio/transcriptions \
+  -F "file=@/path/to/clip.wav" \
+  -F "model=zipa-ipa"
+# {"text": "a ɪ m k ə n f j u z ...", ...}
+```
+
+Add `-F "response_format=verbose_json"` (or `timestamp_granularities[]=word`)
+to get each phone as a `words` entry with `start` and `end` in seconds.
 
 ### Prompting Chatterbox with emotion
 

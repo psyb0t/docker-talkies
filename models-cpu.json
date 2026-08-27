@@ -68,6 +68,18 @@
       "executor": "vosk",
       "languages": ["en"]
     },
+    "wav2vec2-xlsr-53-espeak": {
+      "repo": "facebook/wav2vec2-xlsr-53-espeak-cv-ft",
+      "revision": "2c733782da5604684829819a5eb744c193fe9398",
+      "executor": "wav2vec2_phoneme"
+    },
+    "zipa-ipa": {
+      "repo": "anyspeech/zipa-small-crctc-500k",
+      "revision": "a97a19eab1e5b2263ade7922ba97bf737dd418db",
+      "executor": "sherpa_offline_ctc",
+      "download_patterns": ["model.int8.onnx", "tokens.txt"],
+      "sherpa_config": {"model": "model.int8.onnx", "tokens": "tokens.txt"}
+    },
     "kokoro-82m": {
       "repo": "hexgrad/Kokoro-82M",
       "executor": "kokoro",

@@ -177,9 +177,10 @@ Stable error codes include `missing_field`, `unknown_field`,
 | `vosk` | native | Vosk `KaldiRecognizer`; waveform acceptance creates endpoints |
 | `whisper` | rolling | Re-decodes a bounded PCM window and emits changed partial revisions |
 
-`parakeet`, `canary_multitask`, and `canary_salm` do not implement this
-protocol and return `streaming_not_supported`. Whisper has no native endpoint
-event. The rolling buffer trades more context against extra repeated decoding.
+`parakeet`, `canary_multitask`, `canary_salm`, `sherpa_offline_ctc`, and
+`wav2vec2_phoneme` do not implement this protocol and return
+`streaming_not_supported`. Whisper has no native endpoint event. The rolling
+buffer trades more context against extra repeated decoding.
 
 All active connections in one server must use the same model. Clients may share
 that model up to the connection limit, but another model cannot start or load

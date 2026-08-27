@@ -15,7 +15,9 @@ from .parakeet_cpp import ParakeetCppBackend
 from .qwen3_tts import Qwen3TTSBackend
 from .salm import SalmBackend
 from .sherpa import SherpaBackend
+from .sherpa_offline_ctc import SherpaOfflineCtcBackend
 from .vosk import VoskBackend
+from .wav2vec2_phoneme import Wav2Vec2PhonemeBackend
 from .whisper import WhisperBackend
 from .whisper_stream import WhisperStreamingAdapter
 
@@ -96,6 +98,22 @@ def build_backends(registry: dict[str, dict], device: str) -> dict[str, Any]:
                     "recognizer_factory",
                     "from_transducer",
                 ),
+            )
+            continue
+        if executor == "sherpa_offline_ctc":
+            out[model_id] = SherpaOfflineCtcBackend(
+                model_id=model_id,
+                repo=repo,
+                recognizer_config=_sherpa_config(entry, model_path),
+                device=device,
+            )
+            continue
+        if executor == "wav2vec2_phoneme":
+            out[model_id] = Wav2Vec2PhonemeBackend(
+                model_id=model_id,
+                repo=repo,
+                model_path=model_path,
+                device=device,
             )
             continue
         if executor == "vosk":

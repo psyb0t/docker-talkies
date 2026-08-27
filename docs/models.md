@@ -20,6 +20,8 @@ that limits both boot-time downloads and the model surface exposed by the API.
 | `sherpa-zipformer-en-int8-left-64` | `csukuangfj/sherpa-onnx-streaming-zipformer-en-2023-06-26` | `sherpa` | yes | yes | native |
 | `sherpa-zipformer-en-int8-left-128` | `csukuangfj/sherpa-onnx-streaming-zipformer-en-2023-06-26` | `sherpa` | yes | yes | native |
 | `vosk-small-en-us-0.15` | `aglaia-models/vosk-model-small-en-us-0.15` | `vosk` | yes | yes | native (CPU decoder) |
+| `wav2vec2-xlsr-53-espeak` | `facebook/wav2vec2-xlsr-53-espeak-cv-ft` | `wav2vec2_phoneme` | yes | yes | no |
+| `zipa-ipa` | `anyspeech/zipa-small-crctc-500k` | `sherpa_offline_ctc` | yes | yes | no |
 
 All ASR slugs use `POST /v1/audio/transcriptions`. A registry may provide the
 default source language, target language, and task; request `language` wins
@@ -50,6 +52,36 @@ and always decodes on CPU, including in the CUDA image. All five models support
 the live WebSocket API and the OpenAI-compatible file-transcription API. See
 [Streaming](streaming.md#sherpa-onnx-and-vosk) for protocol and file-route
 details.
+
+### Phoneme recognition
+
+`wav2vec2-xlsr-53-espeak` and `zipa-ipa` recognize phones rather than words.
+They run no language model and no lexicon, so the output is the phones the
+acoustic model heard, not the nearest dictionary word: a mispronunciation stays
+visible instead of being corrected away. Both use `POST /v1/audio/transcriptions`
+like every other ASR slug, and neither does live streaming.
+
+The `text` field is a space-separated IPA phone stream, with one segment per
+file. A `verbose_json`, `srt`, or `vtt` request (or `timestamp_granularities[]`)
+turns each phone into a `words` entry with `start` and `end` in seconds.
+`language` is accepted and echoed but does not steer decoding; both models are
+language-neutral. Translation and task modes do not apply.
+
+`wav2vec2-xlsr-53-espeak` is the wav2vec2 XLSR-53 checkpoint fine-tuned on
+CommonVoice phonemes. It emits eSpeak-style IPA over a 392-symbol vocabulary,
+the same alphabet the Kokoro G2P path uses. Code and weights are Apache-2.0,
+the repository is ungated, and the download is 1.3 GB. It needs no extra image
+dependency because `Wav2Vec2ForCTC` already ships with the bundled transformers.
+Audio longer than `TALKIES_VAD_CHUNK_THRESHOLD` is VAD-chunked before decoding,
+since the model uses full self-attention.
+
+`zipa-ipa` is the ZIPA (Zipformer IPA) small CTC checkpoint, served through the
+sherpa-onnx runtime already in the images via the `sherpa_offline_ctc` executor.
+The download is a 71 MB int8 model plus its token table, and it decodes a whole
+file in one pass at tens of times realtime on CPU. The weights repository
+carries no license tag; the training code and checkpoint lineage are permissive
+(MIT and Apache-2.0), and the weights download at runtime rather than shipping
+in the image.
 
 ## Bundled TTS models
 
@@ -127,7 +159,8 @@ Every entry needs a `repo`. Optional `max_concurrency` is an integer from 1 to
 1024 and limits active inference requests across every API surface. `executor`
 defaults to `whisper` and must be one
 of `whisper`, `parakeet`, `parakeet_cpp`, `canary_multitask`, `canary_salm`,
-`kokoro`, `kokoro_nvidia`, `qwen3_tts`, `sherpa`, `vosk`, or `chatterbox`. The entrypoint
+`kokoro`, `kokoro_nvidia`, `qwen3_tts`, `sherpa`, `sherpa_offline_ctc`, `vosk`,
+`chatterbox`, or `wav2vec2_phoneme`. The entrypoint
 downloads a selected repository into `/data/models/<slug>`. `revision`, when
 set, is supplied to Hugging Face snapshot download; pin it to an immutable
 commit for reproducible contents. An optional `download_patterns` array limits
