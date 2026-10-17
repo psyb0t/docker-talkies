@@ -126,3 +126,6 @@ tests/integration/.fixtures/*
 .secaudit/
 .anustimes/
 .brutal_reviews/
+
+# Review receipt for the local release script.
+git-update.sh.debot
