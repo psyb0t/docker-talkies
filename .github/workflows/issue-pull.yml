@@ -5,7 +5,7 @@ on:
   # account's crons together, so a shared minute is a thundering herd at both
   # mirrors every six hours.
   schedule:
-    - cron: "57 */6 * * *"
+    - cron: "30 0,6,12,18 * * *"
   workflow_dispatch:
 
 jobs:
