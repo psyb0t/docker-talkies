@@ -14,9 +14,7 @@ credentials.json
 *.pfx
 
 # Dev-level markdown — never commit
-AGENTS.md
 CODEX.local.md
-CLAUDE.md
 implplan.md
 PLAN.md
 TODO.md
@@ -118,7 +116,6 @@ tests/integration/.fixtures/*
 !tests/integration/.fixtures/audio.mp3.txt
 /.e2e-cache
 /.e2e-cache-streaming-custom
-.claude
 .telemetry/
 
 # Test plan scratch — per-run, never committed
@@ -129,3 +126,6 @@ tests/integration/.fixtures/*
 
 # Review receipt for the local release script.
 git-update.sh.debot
+
+# Local JSON configuration at any depth
+*.local.json
