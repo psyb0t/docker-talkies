@@ -4,6 +4,39 @@ All notable changes per release. Versions follow [semver](https://semver.org)
 pre-1.0 conventions: minor bumps may include breaking changes (called out
 explicitly with **Breaking.**), patch bumps are docs / build / fixes only.
 
+## v0.17.1 — 2026-11-09
+
+Documentation site, a release pipeline that promotes tested images, and funding links. No code changed.
+
+### Changed
+
+- The documentation in `docs/` is now published at
+  https://psyb0t.github.io/docker-talkies/, with search, an errors table for
+  every HTTP status, an MCP tools table, the registry fields, every live ASR
+  error and close code, and a new Agent integrations page. The README links to
+  the published pages with full URLs, so the links also work on Docker Hub.
+  `make docs` builds the site locally.
+- Doc corrections found while moving the docs: phone-level `words` need
+  `response_format=verbose_json` (`timestamp_granularities[]` alone returns
+  none); unloading answers 409 while the model has any active request, not only
+  a live stream; `/data/custom-voices` serves Chatterbox as well as Qwen3; the
+  CPU image compiles parakeet.cpp from a pinned commit while the CUDA image
+  installs a release bundle; the skill's setup examples publish the port on
+  loopback.
+- The pipeline runs `make lint` and `make test` on every push before any image
+  is built. A `main` push also tags both images `:sha-<commit>`, and a `v*` tag
+  waits for that commit's `main` run to pass, then promotes the same images to
+  the release tag instead of rebuilding them. The GitHub release, ClawHub and
+  the MCP Registry publish after the promotion.
+- The MCP Registry description no longer claims a text-to-speech tool; MCP
+  serves ASR and file staging only.
+- Contributor guide (`AGENTS.md`) and project rules under `.agents/rules/`,
+  with `CLAUDE.md` and `.claude` committed as links to them.
+- Added Buy Me a Coffee to the funding links and a Sponsor section to the
+  README.
+- The plugin manifests no longer use em dashes, and the issue-pull workflow
+  runs at hours of its own instead of the hours every repository shared.
+
 ## v0.17.0 — 2026-08-27
 
 Two ASR models now return the phones that were spoken instead of words.

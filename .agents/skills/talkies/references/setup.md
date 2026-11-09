@@ -18,7 +18,7 @@ Serves 2× Whisper + `canary-180m-flash` + `nemotron-3.5-asr-0.6b` (CPU-optimize
 ```bash
 docker run -d --name talkies \
   -v $HOME/talkies-data:/data \
-  -p 8000:8000 \
+  -p 127.0.0.1:8000:8000 \
   psyb0t/talkies:latest
 ```
 
@@ -35,7 +35,7 @@ use GPU offload. The matching CUDA 12.9 runtime libraries stay isolated under
 docker run -d --name talkies \
   --gpus all \
   -v $HOME/talkies-data:/data \
-  -p 8000:8000 \
+  -p 127.0.0.1:8000:8000 \
   psyb0t/talkies:latest-cuda
 ```
 
@@ -166,13 +166,13 @@ for the protocol and client examples.
 
 ```bash
 # Restrict to just the small/fast models (saves first-boot download time).
-docker run -d -p 8000:8000 \
+docker run -d -p 127.0.0.1:8000:8000 \
   -e TALKIES_ENABLED_MODELS=whisper-large-v3-turbo,canary-180m-flash \
   -v $HOME/talkies-data:/data \
   psyb0t/talkies:latest
 
 # Preload at boot so the first request doesn't pay the cold-load tax.
-docker run -d -p 8000:8000 \
+docker run -d -p 127.0.0.1:8000:8000 \
   -e TALKIES_ENABLED_MODELS=whisper-large-v3-turbo \
   -e TALKIES_PRELOAD=whisper-large-v3-turbo \
   -v $HOME/talkies-data:/data \
@@ -191,20 +191,20 @@ docker run -d -p 127.0.0.1:8000:8000 \
   psyb0t/talkies:latest
 
 # Disable auto-unload (keep model resident forever).
-docker run -d -p 8000:8000 \
+docker run -d -p 127.0.0.1:8000:8000 \
   -e TALKIES_MODEL_TTL=0 \
   -v $HOME/talkies-data:/data \
   psyb0t/talkies:latest
 
 # Bump upload + download caps for huge files.
-docker run -d -p 8000:8000 \
+docker run -d -p 127.0.0.1:8000:8000 \
   -e TALKIES_MAX_UPLOAD_BYTES=1073741824 \
   -e TALKIES_MAX_DOWNLOAD_BYTES=10737418240 \
   -v $HOME/talkies-data:/data \
   psyb0t/talkies:latest
 
 # Pin to a specific GPU on a multi-GPU host.
-docker run -d --gpus '"device=1"' -p 8000:8000 \
+docker run -d --gpus '"device=1"' -p 127.0.0.1:8000:8000 \
   -e TALKIES_DEVICE=cuda:0 \
   -v $HOME/talkies-data:/data \
   psyb0t/talkies:latest-cuda
@@ -226,7 +226,7 @@ The image ships with `models.json` (CUDA) or `models-cpu.json` (CPU) baked in. O
 docker run -d --name talkies \
   -v $HOME/talkies-data:/data \
   -v $PWD/my-models.json:/app/models.json:ro \
-  -p 8000:8000 \
+  -p 127.0.0.1:8000:8000 \
   psyb0t/talkies:latest
 ```
 

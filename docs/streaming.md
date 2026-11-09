@@ -1,3 +1,9 @@
+---
+title: "Streaming"
+description: "The Talkies live ASR WebSocket protocol (start message, PCM frames, events, close codes, backends) and Qwen3 raw PCM speech streaming."
+nav_order: 5
+---
+
 # Streaming
 
 Talkies has two streaming surfaces: a bidirectional WebSocket protocol for live
@@ -29,11 +35,11 @@ The first message must be this JSON object shape:
 
 | Field | Required | Default | Constraint |
 |---|---|---|---|
-| `type` | yes | — | exactly `start` |
-| `model` | yes | — | enabled streaming-capable ASR slug |
-| `encoding` | yes | — | exactly `pcm_s16le` |
-| `sample_rate` | yes | — | exactly `16000` |
-| `channels` | yes | — | exactly `1` |
+| `type` | yes | none | exactly `start` |
+| `model` | yes | none | enabled streaming-capable ASR slug |
+| `encoding` | yes | none | exactly `pcm_s16le` |
+| `sample_rate` | yes | none | exactly `16000` |
+| `channels` | yes | none | exactly `1` |
 | `language` | no | backend default | `auto` or a language/locale tag |
 | `interim_results` | no | `true` | suppress `partial` events when false |
 | `word_timestamps` | no | `false` | request words when a backend can provide them |
@@ -161,12 +167,15 @@ possible: `{"type":"error","code":"...","detail":"..."}`.
 | 4429 | Global WebSocket or selected-model concurrency limit reached |
 | 4500 | Backend or internal failure |
 
-Stable error codes include `missing_field`, `unknown_field`,
+The `code` values are `invalid_json`, `invalid_message`, `invalid_event`,
+`invalid_field`, `invalid_model`, `invalid_language`, `missing_field`,
+`unknown_field`, `duplicate_field`, `message_too_large`,
 `unsupported_encoding`, `unsupported_sample_rate`, `unsupported_channels`,
-`invalid_audio`, `empty_audio`, `frame_too_large`, `message_too_large`,
-`duplicate_field`, `unaligned_audio`, `unknown_model`,
-`streaming_not_supported`, `connection_limit`, `model_busy`,
-`duration_limit`, `idle_timeout`, and `server_error`.
+`invalid_audio`, `empty_audio`, `frame_too_large`, `unaligned_audio`,
+`duration_limit` (all 4400), `unknown_model` (4404), `idle_timeout` (4408),
+`streaming_not_supported` and `model_busy` (4409), `connection_limit` (4429),
+and `server_error` (4500). A rejected bearer token closes the upgrade with
+4401 and no error object.
 
 ### Backend behaviour and pinning
 
@@ -261,5 +270,5 @@ the default is `8`. A Qwen3 backend serializes its own synthesis work while a
 stream is active.
 
 The protocol parser is in
-[`src/talkies/asr_streaming.py`](../src/talkies/asr_streaming.py); WebSocket
-wiring is in [`src/talkies/server.py`](../src/talkies/server.py).
+[`src/talkies/asr_streaming.py`](https://github.com/psyb0t/docker-talkies/blob/main/src/talkies/asr_streaming.py); WebSocket
+wiring is in [`src/talkies/server.py`](https://github.com/psyb0t/docker-talkies/blob/main/src/talkies/server.py).

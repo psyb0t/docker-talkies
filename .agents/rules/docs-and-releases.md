@@ -4,7 +4,7 @@ Prefix: DOC.
 
 ## Docs move with the code
 
-- **DOC1:** `README.md` stays a short entry point that links to `docs/` (`docs/development.md`: "Keep the root README short and place detailed user documentation in `docs/`"). Put detail in the owning doc, and add a row to the README's Documentation table when a doc file is added.
+- **DOC1:** `README.md` stays a short entry point that links to `docs/` (`docs/development.md`: "Keep the root README short and place detailed user documentation in `docs/`"). Put detail in the owning doc, and add a row to the README's Documentation table when a doc file is added. README links to docs use the full published URL (`https://psyb0t.github.io/docker-talkies/<page>/`), because the README is also shown on Docker Hub, where relative links break.
 - **DOC2:** A change that alters behaviour a user or agent can see updates the owning docs in the same change:
   - models, executors, registry fields: `docs/models.md` (including its executor list), the README "Models at a glance" section, and the slug lists and counts in `.agents/skills/talkies/SKILL.md` (its frontmatter `description` too);
   - settings: `docs/configuration.md` and `.agents/skills/talkies/references/setup.md`;
@@ -16,6 +16,7 @@ Prefix: DOC.
 
   v0.15.3 was a docs-only release because `docs/models.md` and the skill had fallen behind the Chatterbox executor; check every owner above, not only the closest one.
 - **DOC3:** A changed project convention updates `AGENTS.md` or the matching file in `.agents/rules/` in the same change.
+- **DOC15:** `docs/` is a GitHub Pages site (Just the Docs, built from `main` `/docs`). Every page has front matter with a `title`, a `description` of 50 to 170 characters and a `nav_order`, and one `#` heading. Link pages to each other with relative `.md` paths; link any file outside `docs/` with its full `https://github.com/psyb0t/docker-talkies/blob/main/<path>` URL (`tree/main/<dir>` for a directory). Run `make docs` after a docs change and check the output in `.testing/docs-site`.
 
 ## Prose style
 

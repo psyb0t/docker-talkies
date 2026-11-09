@@ -3,8 +3,8 @@
   "id": "@psyb0t/talkies",
   "version": "0.0.0",
   "type": "code-plugin",
-  "summary": "Wire an OpenClaw agent to a self-hosted talkies speech API over MCP — ASR transcription and file staging as tools.",
-  "description": "A thin stdio<->HTTP bridge that connects an MCP client (OpenClaw, Claude, Cursor, Codex, ...) to a running talkies instance's MCP endpoint (/v1/mcp), exposing its 6 tools: list_models (discover ASR slugs), transcribe (run ASR on a URL or staged file), list_files, put_file, get_file, and delete_file (server-side file staging). talkies is self-hosted — you run the server yourself and point this bridge at it. See https://github.com/psyb0t/docker-talkies.",
+  "summary": "Wire an OpenClaw agent to a self-hosted talkies speech API over MCP: ASR transcription and file staging as tools.",
+  "description": "A thin stdio<->HTTP bridge that connects an MCP client (OpenClaw, Claude, Cursor, Codex, ...) to a running talkies instance's MCP endpoint (/v1/mcp), exposing its 6 tools: list_models (discover ASR slugs), transcribe (run ASR on a URL or staged file), list_files, put_file, get_file, and delete_file (server-side file staging). talkies is self-hosted: you run the server yourself and point this bridge at it. See https://github.com/psyb0t/docker-talkies.",
   "extensions": ["./bin/cli.js"],
   "compat": {
     "pluginApi": ">=2026.3.24-beta.2"

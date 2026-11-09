@@ -10,6 +10,9 @@ CUDA_IMAGE := psyb0t/talkies:local-cuda
 CUDA_VERSIONED_IMAGE := psyb0t/talkies:v$(VERSION)-cuda
 CUDA_LATEST_IMAGE := psyb0t/talkies:latest-cuda
 BUMP_HOST := bash scripts/bump_exclude_newer.sh $(PYPROJECT)
+# The Jekyll image GitHub Pages builds docs/ with, pinned by digest.
+DOCS_IMAGE := ghcr.io/actions/jekyll-build-pages:v1.0.13@sha256:6791ebfd912185ed59bfb5fb102664fa872496b79f87ff8b9cfba292a7345041
+DOCS_SITE_DIR := .testing/docs-site
 
 UID := $(shell id -u)
 GID := $(shell id -g)
@@ -39,7 +42,7 @@ DEV_RUN_TTY := docker run --rm -it \
         run run-cuda \
         test test-unit test-integration test-streaming test-streaming-custom \
         test-streaming-custom-cuda \
-        lint format check clean \
+        lint format check clean docs \
         pkg-lock pkg-upgrade pkg-add pkg-remove pkg-update \
         compile-heavy
 
@@ -165,6 +168,23 @@ format: dev-image ## Format python sources
 	$(DEV_RUN) black src
 
 check: lint test ## Lint + tests
+
+# -----------------------------------------------------------------------------
+# Documentation site: built host-side with the GitHub Pages Jekyll image.
+# -----------------------------------------------------------------------------
+
+docs: ## Build the docs/ site into .testing/docs-site with the GitHub Pages Jekyll image
+	mkdir -p $(DOCS_SITE_DIR)
+	docker run --rm \
+		-u $(UID):$(GID) \
+		-e HOME=/tmp \
+		-e GITHUB_WORKSPACE=/work \
+		-e GITHUB_REPOSITORY=psyb0t/docker-talkies \
+		-e INPUT_SOURCE=docs \
+		-e INPUT_DESTINATION=$(DOCS_SITE_DIR) \
+		-e INPUT_VERBOSE=false \
+		-v $(PWD):/work \
+		$(DOCS_IMAGE)
 
 clean: ## Remove build / cache artifacts (host-side)
 	docker rmi $(CPU_IMAGE) $(CUDA_IMAGE) 2>/dev/null || true

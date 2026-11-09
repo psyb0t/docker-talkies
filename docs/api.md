@@ -1,3 +1,9 @@
+---
+title: "HTTP API"
+description: "Talkies HTTP routes: OpenAI-compatible transcription and speech, voices, file staging, model lifecycle, error statuses and the MCP tools."
+nav_order: 4
+---
+
 # HTTP API
 
 Talkies serves HTTP on port 8000. When `TALKIES_AUTH_TOKEN` is set, send
@@ -11,8 +17,9 @@ Talkies serves HTTP on port 8000. When `TALKIES_AUTH_TOKEN` is set, send
 | `GET /v1/models` | OpenAI-style enabled models with `modality` and `max_concurrency` |
 | `GET /v1/audio/voices` | `{"voices": [...]}` with `voice`, `model`, `default`, and optional `origin` |
 
-Voice names are scoped to their model. For Qwen3 base voice-cloning models,
-`origin` identifies a discovered voice as `builtin` or `custom`.
+Voice names are scoped to their model. For the Qwen3 base voice-cloning
+models and Chatterbox Turbo, `origin` marks a voice as `builtin` (shipped in
+the image or checkpoint) or `custom` (found under `/data/custom-voices`).
 
 ## Transcription
 
@@ -21,14 +28,14 @@ of `file` or `file_path`.
 
 | Field | Required | Default | Behaviour |
 |---|---|---|---|
-| `file` | one of file/path | — | Multipart audio upload, limited by `TALKIES_MAX_UPLOAD_BYTES` |
-| `file_path` | one of file/path | — | Relative staged path or `http(s)` URL fetched and cached by the server |
-| `model` | yes | — | Enabled ASR slug; unknown returns 404 |
+| `file` | one of file/path | none | Multipart audio upload, limited by `TALKIES_MAX_UPLOAD_BYTES` |
+| `file_path` | one of file/path | none | Relative staged path or `http(s)` URL fetched and cached by the server |
+| `model` | yes | none | Enabled ASR slug; unknown returns 404 |
 | `language` | no | registry default | Source-language hint |
 | `response_format` | no | `json` | `json`, `text`, `verbose_json`, `srt`, or `vtt` |
 | `diarization` | no | `false` | `true` splits stereo left/right channels into speakers `L` and `R` |
 | `timestamp_granularities[]` | no | empty | Accepted for compatibility; verbose JSON emits available segments and words |
-| `prompt`, `temperature` | no | — | Accepted for OpenAI compatibility and ignored |
+| `prompt`, `temperature` | no | none | Accepted for OpenAI compatibility and ignored |
 
 ```bash
 curl -s http://127.0.0.1:8000/v1/audio/transcriptions \
@@ -62,7 +69,8 @@ for selectable slugs.
 
 If the model has no free inference slot, transcription and speech requests
 return HTTP 429. A request for a different model while inference is active
-returns HTTP 409 rather than evicting the active backend.
+returns HTTP 409 rather than evicting the active backend. Every status is
+listed under [Errors](#errors).
 
 ## Speech
 
@@ -71,18 +79,18 @@ for Qwen3 with `response_format: "pcm"`, an incremental raw PCM response.
 
 | Field | Required | Default | Rules |
 |---|---|---|---|
-| `model` | yes | — | Enabled TTS slug |
-| `input` | yes | — | Non-empty source text |
+| `model` | yes | none | Enabled TTS slug |
+| `input` | yes | none | Non-empty source text |
 | `voice` | no | model default | Must exist in that model's voice catalog |
 | `response_format` | no | `mp3` | `mp3`, `opus`, `aac`, `flac`, `wav`, or `pcm` |
-| `speed` | no | `1.0` | 0.25–4.0; backend support varies |
-| `instructions` | no | — | Qwen3 mode-specific instruction/voice text; Kokoro ignores it |
+| `speed` | no | `1.0` | 0.25 to 4.0; backend support varies |
+| `instructions` | no | none | Qwen3 mode-specific instruction/voice text; Kokoro ignores it |
 | `language` | no | model default | Qwen3 language label |
-| `temperature` | no | backend default | 0–2, Qwen3 sampling option |
-| `top_k` | no | backend default | 1–1000, Qwen3 sampling option |
-| `top_p` | no | backend default | 0–1, Qwen3 sampling option |
-| `repetition_penalty` | no | backend default | 0.5–2, Qwen3 sampling option |
-| `max_new_tokens` | no | backend default | 1–2048, Qwen3 sampling option |
+| `temperature` | no | backend default | 0 to 2, Qwen3 sampling option |
+| `top_k` | no | backend default | 1 to 1000, Qwen3 sampling option |
+| `top_p` | no | backend default | 0 to 1, Qwen3 sampling option |
+| `repetition_penalty` | no | backend default | 0.5 to 2, Qwen3 sampling option |
+| `max_new_tokens` | no | backend default | 1 to 2048, Qwen3 sampling option |
 | `do_sample` | no | backend default | Qwen3 sampling option |
 
 ```bash
@@ -124,25 +132,56 @@ follow the data-retention guidance in [Operations](operations.md#remote-files-an
 
 | Route | Behaviour |
 |---|---|
-| `GET /api/ps` | Loaded models, their source repo, and idle duration |
-| `DELETE /api/ps/{model_id}` | Unload one loaded model; 404 if unknown/not loaded |
-| `POST /unload` | Attempt to unload every loaded model |
+| `GET /api/ps` | Loaded models with `id`, `repo`, `loaded`, `idle_seconds`, `active_requests`, and `max_concurrency` |
+| `DELETE /api/ps/{model_id}` | Unload one loaded model; 404 if unknown or not loaded |
+| `POST /unload` | Unload every loaded model; returns `{"unloaded": [...]}` |
 
-These endpoints return HTTP 409 while an active live-ASR stream pins the
-target model. A request that needs a different model also returns 409 until the
-stream releases its pin.
+Any active inference request pins its model: HTTP or MCP transcription,
+speech, or a live ASR stream. `DELETE /api/ps/{model_id}` returns HTTP 409
+while the target model has active requests, and `POST /unload` returns 409
+while any model has them. A request that needs a different model also gets
+409 until the pin is released.
+
+## Errors
+
+Error responses are JSON with a `detail` field: a message string, or a list of
+field errors for 422.
+
+| Status | When |
+|---|---|
+| 400 | Both or neither of `file` and `file_path`; a TTS slug on the transcription route or an ASR slug on the speech route; audio ffmpeg cannot decode; `diarization` on audio that is not 2-channel; an invalid staged path or a refused URL download; an unknown voice, an unsupported `response_format`, or empty `input`; a backend rejecting the request, such as a Chatterbox reference clip of 5 seconds or less |
+| 401 | `TALKIES_AUTH_TOKEN` is set and the bearer token is missing or wrong |
+| 404 | Unknown model slug; a staged `file_path` or `/v1/files/{path}` that does not exist |
+| 409 | Another model has active inference requests, or an unload targets a model in use |
+| 413 | An upload larger than `TALKIES_MAX_UPLOAD_BYTES` |
+| 422 | A request body that fails field validation, such as `speed` outside 0.25 to 4.0 |
+| 429 | The model's `max_concurrency` is reached |
+| 500 | ffmpeg failed to encode the speech output |
+| 503 | A TTS backend cannot list its voices or find its model files |
+
+A Qwen3 PCM stream has already sent its headers when synthesis starts, so a
+failure during the stream ends the response early instead of returning a
+status.
 
 ## MCP
 
-Talkies mounts a stateless streamable-HTTP MCP server at `/v1/mcp`; both the
-bare path and trailing-slash form work. It exposes six tools:
+Talkies mounts a stateless Streamable HTTP MCP server at `/v1/mcp`; both the
+bare path and the trailing-slash form work. It exposes six tools:
 
-- `list_models`: list configured ASR models and whether each is loaded;
-- `transcribe`: transcribe an `http(s)` URL or staged `file_path`;
-- `list_files`, `put_file`, `get_file`, `delete_file`: manage staged files.
+| Tool | Arguments | Returns |
+|---|---|---|
+| `list_models` | none | ASR models with `slug`, `executor`, `default_source_lang`, `default_target_lang`, `default_task`, and `loaded` |
+| `transcribe` | `file_path`, `model`, optional `language`, `response_format` (default `json`), `diarization` (default `false`) | The transcript as a string; JSON formats are JSON-encoded |
+| `list_files` | none | The same listing as `GET /v1/files` |
+| `put_file` | `path`, `content_base64` | `{"path": ..., "size": ...}` |
+| `get_file` | `path` | `path`, `size`, and `content_base64` |
+| `delete_file` | `path` | `{"deleted": ...}` |
 
-MCP file bytes are base64 in JSON and use the normal upload limit. The MCP
-server offers ASR and file tools only; use the HTTP speech endpoint for TTS.
+`transcribe` takes an `http(s)` URL or a staged path, not an upload, and runs
+the same pipeline as the HTTP route. File bytes travel as base64 in JSON and
+are capped at `TALKIES_MAX_UPLOAD_BYTES` in both directions. A failed tool call
+returns a tool error with a readable message. The MCP server offers ASR and
+file tools only; use the HTTP speech route for TTS.
 
-The HTTP routes live in [`src/talkies/server.py`](../src/talkies/server.py);
-the MCP tools live in [`src/talkies/mcp_server.py`](../src/talkies/mcp_server.py).
+The HTTP routes live in [`src/talkies/server.py`](https://github.com/psyb0t/docker-talkies/blob/main/src/talkies/server.py);
+the MCP tools live in [`src/talkies/mcp_server.py`](https://github.com/psyb0t/docker-talkies/blob/main/src/talkies/mcp_server.py).

@@ -120,3 +120,7 @@ scripts/
 # debugging) — never ships.
 parakeet.cpp/
 .telemetry/
+
+# Documentation site sources and local builds
+docs/
+.testing

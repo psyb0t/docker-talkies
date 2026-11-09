@@ -1,3 +1,9 @@
+---
+title: "Getting started"
+description: "Run the Talkies CPU or CUDA Docker image, keep model downloads in /data, make a first transcription and speech request, and turn on auth."
+nav_order: 2
+---
+
 # Getting started
 
 Talkies is an HTTP server in a Docker container. On first boot it downloads

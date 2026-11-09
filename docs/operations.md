@@ -1,3 +1,9 @@
+---
+title: "Operations and security"
+description: "Run Talkies safely: loopback or authenticated exposure, shared file staging, URL download guard, model memory, eviction and logs."
+nav_order: 7
+---
+
 # Operations and security
 
 ## Network exposure

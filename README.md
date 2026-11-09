@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/psyb0t/docker-talkies/actions/workflows/pipeline.yml/badge.svg?branch=main)](https://github.com/psyb0t/docker-talkies/actions/workflows/pipeline.yml)
 [![version](https://raw.githubusercontent.com/psyb0t/docker-talkies/badges/version.svg)](https://github.com/psyb0t/docker-talkies/releases)
-[![license](https://raw.githubusercontent.com/psyb0t/docker-talkies/badges/license.svg)](LICENSE)
+[![license](https://raw.githubusercontent.com/psyb0t/docker-talkies/badges/license.svg)](https://github.com/psyb0t/docker-talkies/blob/main/LICENSE)
 [![Docker Pulls](https://img.shields.io/docker/pulls/psyb0t/talkies?style=flat-square)](https://hub.docker.com/r/psyb0t/talkies)
 
 Self-hosted speech services in one Docker image: OpenAI-compatible file
@@ -20,6 +20,7 @@ staging, model lifecycle controls, and an MCP endpoint for ASR workflows.
 - [Agent integrations](#agent-integrations)
 - [Security in one minute](#security-in-one-minute)
 - [Development](#development)
+- [Sponsor](#sponsor)
 
 ## Start here
 
@@ -39,24 +40,25 @@ curl -s http://127.0.0.1:8000/v1/audio/transcriptions \
   -F "model=whisper-large-v3-turbo"
 ```
 
-For CUDA-only models — Parakeet-TDT, the larger Canary models, Qwen3 TTS and
-Chatterbox Turbo — use `psyb0t/talkies:latest-cuda` with `--gpus all`. The
+For the CUDA-only models (Parakeet-TDT, the larger Canary models, Qwen3 TTS
+and Chatterbox Turbo), use `psyb0t/talkies:latest-cuda` with `--gpus all`. The
 loopback port mapping keeps the service local; see
-[Getting started](docs/getting-started.md) for first boot and authentication.
+[Getting started](https://psyb0t.github.io/docker-talkies/getting-started/)
+for first boot and authentication.
 
 ## What it provides
 
 | Surface | Purpose | Reference |
 |---|---|---|
-| `POST /v1/audio/transcriptions` | File transcription and subtitles | [HTTP API](docs/api.md#transcription) |
-| `WS /v1/audio/transcriptions/stream` | Live 16 kHz PCM ASR | [Streaming](docs/streaming.md#live-asr-over-websocket) |
-| `POST /v1/audio/speech` | Speech synthesis in six formats | [HTTP API](docs/api.md#speech) |
-| `GET /v1/models` | Enabled slugs and their modality | [HTTP API](docs/api.md) |
-| `GET /v1/audio/voices` | Per-model voice catalog with origin tags | [Models](docs/models.md) |
-| `GET/PUT/DELETE /v1/files/*` | Server-side file staging | [HTTP API](docs/api.md#file-staging) |
-| `/api/ps`, `/unload` | Model inspection and eviction | [Operations](docs/operations.md#model-lifecycle) |
-| `/v1/mcp` | Streamable HTTP MCP with ASR/file tools | [HTTP API](docs/api.md#mcp) |
-| `GET /healthz` | Liveness probe; the only unauthenticated route | [Operations](docs/operations.md) |
+| `POST /v1/audio/transcriptions` | File transcription and subtitles | [HTTP API](https://psyb0t.github.io/docker-talkies/api/#transcription) |
+| `WS /v1/audio/transcriptions/stream` | Live 16 kHz PCM ASR | [Streaming](https://psyb0t.github.io/docker-talkies/streaming/#live-asr-over-websocket) |
+| `POST /v1/audio/speech` | Speech synthesis in six formats | [HTTP API](https://psyb0t.github.io/docker-talkies/api/#speech) |
+| `GET /v1/models` | Enabled slugs and their modality | [HTTP API](https://psyb0t.github.io/docker-talkies/api/#discovery-and-health) |
+| `GET /v1/audio/voices` | Per-model voice catalog with origin tags | [Models](https://psyb0t.github.io/docker-talkies/models/#bundled-tts-models) |
+| `GET/PUT/DELETE /v1/files/*` | Server-side file staging | [HTTP API](https://psyb0t.github.io/docker-talkies/api/#file-staging) |
+| `/api/ps`, `/unload` | Model inspection and eviction | [Operations](https://psyb0t.github.io/docker-talkies/operations/#model-lifecycle) |
+| `/v1/mcp` | Streamable HTTP MCP with ASR/file tools | [HTTP API](https://psyb0t.github.io/docker-talkies/api/#mcp) |
+| `GET /healthz` | Liveness probe; the only unauthenticated route | [Operations](https://psyb0t.github.io/docker-talkies/operations/#network-exposure) |
 
 The HTTP transcription and speech routes use the corresponding OpenAI wire
 shapes where those contracts overlap. Streaming ASR, files, lifecycle controls,
@@ -76,7 +78,7 @@ and MCP are Talkies extensions.
   phones that were spoken, not words, with no language model correcting them
   toward the nearest dictionary entry. Same transcription endpoint and
   timestamp options as the other ASR models; see
-  [Phoneme recognition](docs/models.md#phoneme-recognition).
+  [Phoneme recognition](https://psyb0t.github.io/docker-talkies/models/#phoneme-recognition).
 - Per-model concurrency limits cover WebSocket, HTTP, MCP, ASR, and TTS; the
   bundled Nemotron CPU and CUDA entries admit two requests.
 - Streaming TTS: Qwen3 returns incremental raw PCM for
@@ -90,7 +92,7 @@ and MCP are Talkies extensions.
   transcript; Chatterbox needs only the clip, longer than five seconds.
 
 Exact slugs, executors, tag list, and registry format:
-[Models and registries](docs/models.md).
+[Models and registries](https://psyb0t.github.io/docker-talkies/models/).
 
 ### Reading phonemes
 
@@ -106,13 +108,13 @@ curl -s http://127.0.0.1:8000/v1/audio/transcriptions \
 # {"text": "a ɪ m k ə n f j u z ...", ...}
 ```
 
-Add `-F "response_format=verbose_json"` (or `timestamp_granularities[]=word`)
-to get each phone as a `words` entry with `start` and `end` in seconds.
+Add `-F "response_format=verbose_json"` to get each phone as a `words` entry
+with `start` and `end` in seconds.
 
 ### Prompting Chatterbox with emotion
 
 Tags go inline in `input`, in square brackets, lowercase. They are real tokens
-in the model's tokenizer, so only these 19 do anything — any other bracketed
+in the model's tokenizer, so only these 19 do anything; any other bracketed
 word is spoken as literal text:
 
 ```
@@ -137,56 +139,35 @@ Swap `"voice"` for the name of any `.wav` you dropped in `/data/custom-voices`
 
 ## Documentation
 
+The full documentation is at
+**[psyb0t.github.io/docker-talkies](https://psyb0t.github.io/docker-talkies/)**.
+
 | Guide | Contents |
 |---|---|
-| [Getting started](docs/getting-started.md) | Run CPU/CUDA, persist data, authenticate, verify |
-| [Models and registries](docs/models.md) | Bundled slugs, image availability, custom registries |
-| [Architecture](docs/architecture.md) | Request flow, backend selection, on-disk layout |
-| [HTTP API](docs/api.md) | Requests, responses, files, lifecycle, MCP |
-| [Streaming](docs/streaming.md) | Live ASR protocol, streaming backends, PCM TTS |
-| [Configuration](docs/configuration.md) | Supported environment variables and limits |
-| [Operations and security](docs/operations.md) | Exposure, model memory, data retention, logs |
-| [Development](docs/development.md) | Make targets, test suites, image builds |
+| [Getting started](https://psyb0t.github.io/docker-talkies/getting-started/) | Run CPU/CUDA, persist data, authenticate, verify |
+| [Models and registries](https://psyb0t.github.io/docker-talkies/models/) | Bundled slugs, image availability, registry fields, custom registries |
+| [HTTP API](https://psyb0t.github.io/docker-talkies/api/) | Requests, responses, errors, files, lifecycle, MCP |
+| [Streaming](https://psyb0t.github.io/docker-talkies/streaming/) | Live ASR protocol, streaming backends, PCM TTS |
+| [Configuration](https://psyb0t.github.io/docker-talkies/configuration/) | Supported environment variables and limits |
+| [Operations and security](https://psyb0t.github.io/docker-talkies/operations/) | Exposure, model memory, data retention, logs |
+| [Agent integrations](https://psyb0t.github.io/docker-talkies/agent-integrations/) | Skill, Claude Code, Codex and OpenClaw plugins, MCP bridge |
+| [Architecture](https://psyb0t.github.io/docker-talkies/architecture/) | Request flow, backend selection, on-disk layout |
+| [Development](https://psyb0t.github.io/docker-talkies/development/) | Make targets, test suites, image builds, docs site |
 
 ## Agent integrations
 
-The [Talkies skill](.agents/skills/talkies) teaches agents to use the HTTP,
-WebSocket, and MCP surfaces. Install it through the shared `psyb0t` marketplace
-or let Codex discover it directly from this checkout.
-
-### Claude Code
+The [Talkies skill](https://github.com/psyb0t/docker-talkies/tree/main/.agents/skills/talkies)
+teaches agents to use the HTTP, WebSocket, and MCP routes. It installs as a
+Claude Code or Codex plugin from the shared `psyb0t` marketplace, and OpenClaw
+installs the skill and a stdio MCP bridge from ClawHub. For Claude Code:
 
 ```bash
 claude plugin marketplace add psyb0t/agents
 claude plugin install talkies@psyb0t
 ```
 
-Claude Code prompts for the Talkies URL and, when enabled, the bearer token;
-the sensitive token is stored through the client's protected configuration.
-
-### Codex
-
-```bash
-codex plugin marketplace add psyb0t/agents
-codex plugin add talkies@psyb0t
-```
-
-A marketplace install invokes the skill as `$talkies:talkies`. Codex also
-discovers `.agents/skills/talkies` directly in this repository, where it is
-invoked as `$talkies` without installation.
-
-### OpenClaw
-
-The skill and MCP bridge are published through ClawHub:
-
-```bash
-openclaw skills install @psyb0t/talkies
-openclaw plugins install clawhub:@psyb0t/talkies
-```
-
-The bridge connects local stdio MCP clients to a running Talkies `/v1/mcp`
-endpoint. Set `TALKIES_URL` and, when authentication is enabled,
-`TALKIES_AUTH_TOKEN`.
+The Codex and OpenClaw commands and the bridge settings are in
+[Agent integrations](https://psyb0t.github.io/docker-talkies/agent-integrations/).
 
 ## Security in one minute
 
@@ -194,7 +175,8 @@ endpoint. Set `TALKIES_URL` and, when authentication is enabled,
 route except `/healthz`. It is unset by default. Keep the port loopback-only or
 put Talkies behind TLS, authentication, and rate limiting. If untrusted callers
 can supply remote `file_path` URLs, set `TALKIES_BLOCK_PRIVATE_DOWNLOADS=true`.
-See [Operations and security](docs/operations.md) for the complete posture.
+See [Operations and security](https://psyb0t.github.io/docker-talkies/operations/)
+for the complete posture.
 
 ## Development
 
@@ -208,10 +190,20 @@ make test-streaming-custom # real CPU Sherpa/Vosk WebSocket + HTTP tests
 make test-streaming-custom-cuda # real CUDA Sherpa WebSocket + HTTP test
 make compile-heavy         # regenerate the hash-locked ML requirements
 make build-all             # CPU and CUDA production images
+make docs                  # build the documentation site into .testing/docs-site
 ```
 
-`make help` lists every target.
+`make help` lists every target, and
+[Development](https://psyb0t.github.io/docker-talkies/development/) describes each one.
 
-Talkies is released under the [WTFPL](LICENSE). Model weights are downloaded at
-runtime and have their own terms; image component notices are in
-[THIRD_PARTY.md](THIRD_PARTY.md). Release notes are in [CHANGELOG.md](CHANGELOG.md).
+Talkies is released under the
+[WTFPL](https://github.com/psyb0t/docker-talkies/blob/main/LICENSE).
+Model weights are downloaded at runtime and have their own terms; image
+component notices are in
+[THIRD_PARTY.md](https://github.com/psyb0t/docker-talkies/blob/main/THIRD_PARTY.md).
+Release notes are in
+[CHANGELOG.md](https://github.com/psyb0t/docker-talkies/blob/main/CHANGELOG.md).
+
+## Sponsor
+
+<a href="https://www.buymeacoffee.com/psyb0t"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-blue.png" alt="Buy Me a Coffee" height="60" width="217"></a>

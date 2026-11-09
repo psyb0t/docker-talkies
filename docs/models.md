@@ -1,7 +1,13 @@
+---
+title: "Models and registries"
+description: "Every bundled Talkies ASR and TTS slug, which image ships it, registry fields, phoneme models, Chatterbox tags and custom registries."
+nav_order: 3
+---
+
 # Models and registries
 
-The CPU image copies `models-cpu.json` to `/app/models.json`; the CUDA image
-copies `models.json`. `TALKIES_ENABLED_MODELS` is a comma-separated allowlist
+The CPU image copies [`models-cpu.json`](https://github.com/psyb0t/docker-talkies/blob/main/models-cpu.json) to
+`/app/models.json`; the CUDA image copies [`models.json`](https://github.com/psyb0t/docker-talkies/blob/main/models.json). `TALKIES_ENABLED_MODELS` is a comma-separated allowlist
 that limits both boot-time downloads and the model surface exposed by the API.
 
 ## Bundled ASR models
@@ -32,9 +38,10 @@ The CPU image executes its parakeet.cpp backend on CPU. The CUDA image installs
 the SHA-256-pinned upstream v0.5.0 CUDA 12 binary bundle for GPU offload and
 keeps the bundle's CUDA libraries isolated from the Python ML stack.
 
-The registry declares English for Canary-180M and Parakeet-TDT, English/German/
-French/Spanish for Canary-1B, English for Canary-Qwen, and `auto` plus 23 named
-language codes for Nemotron. Whisper entries do not pin a registry language.
+The registry declares English for Canary-180M, English/German/French/Spanish
+for Canary-1B, English for Canary-Qwen, and `auto` plus 23 named language codes
+for Nemotron; the three Canary entries default their source language to
+English. The Whisper and Parakeet-TDT entries do not pin a registry language.
 `canary-qwen-2.5b` also declares `Qwen/Qwen3-1.7B` as a dependent snapshot.
 
 ### Sherpa-ONNX and Vosk choices
@@ -61,9 +68,12 @@ acoustic model heard, not the nearest dictionary word: a mispronunciation stays
 visible instead of being corrected away. Both use `POST /v1/audio/transcriptions`
 like every other ASR slug, and neither does live streaming.
 
-The `text` field is a space-separated IPA phone stream, with one segment per
-file. A `verbose_json`, `srt`, or `vtt` request (or `timestamp_granularities[]`)
-turns each phone into a `words` entry with `start` and `end` in seconds.
+The `text` field is a space-separated IPA phone stream. `zipa-ipa` returns one
+segment per file; `wav2vec2-xlsr-53-espeak` returns one segment per VAD region
+when the audio is long enough to be chunked. A `verbose_json` request lists
+each phone as a `words` entry with `start` and `end` in seconds; `srt` and
+`vtt` are built from the segments. `timestamp_granularities[]` alone does not
+add timings to a `json` or `text` response.
 `language` is accepted and echoed but does not steer decoding; both models are
 language-neutral. Translation and task modes do not apply.
 
@@ -85,15 +95,15 @@ in the image.
 
 ## Bundled TTS models
 
-| Slug | Registry repository | Mode | CPU | CUDA | Default voice |
+| Slug | Registry repository | Executor (mode) | CPU | CUDA | Default voice |
 |---|---|---|---:|---:|---|
 | `kokoro-82m` | `hexgrad/Kokoro-82M` | `kokoro` | yes | yes | `af_heart` |
 | `kokoro-82m-nvidia` | `nvidia/kokoro-82M-onnx-opt` | `kokoro_nvidia` | yes | yes | `af_heart` |
-| `qwen3-tts-0.6b` | `Qwen/Qwen3-TTS-12Hz-0.6B-Base` | `base` | no | yes | `alloy` |
-| `qwen3-tts-1.7b` | `Qwen/Qwen3-TTS-12Hz-1.7B-Base` | `base` | no | yes | `alloy` |
-| `qwen3-tts-0.6b-custom` | `Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice` | `custom_voice` | no | yes | `Vivian` |
-| `qwen3-tts-1.7b-custom` | `Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice` | `custom_voice` | no | yes | `Vivian` |
-| `qwen3-tts-1.7b-design` | `Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign` | `voice_design` | no | yes | `design` |
+| `qwen3-tts-0.6b` | `Qwen/Qwen3-TTS-12Hz-0.6B-Base` | `qwen3_tts` (`base`) | no | yes | `alloy` |
+| `qwen3-tts-1.7b` | `Qwen/Qwen3-TTS-12Hz-1.7B-Base` | `qwen3_tts` (`base`) | no | yes | `alloy` |
+| `qwen3-tts-0.6b-custom` | `Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice` | `qwen3_tts` (`custom_voice`) | no | yes | `Vivian` |
+| `qwen3-tts-1.7b-custom` | `Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice` | `qwen3_tts` (`custom_voice`) | no | yes | `Vivian` |
+| `qwen3-tts-1.7b-design` | `Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign` | `qwen3_tts` (`voice_design`) | no | yes | `design` |
 | `chatterbox-turbo` | `ResembleAI/chatterbox-turbo` | `chatterbox` | no | yes | `builtin` |
 
 `GET /v1/audio/voices` is the source of truth for a model's valid voices.
@@ -111,7 +121,7 @@ with `response_format="pcm"`; see [Speech](api.md#speech).
 ### Chatterbox Turbo
 
 English-only, 24 kHz mono, buffered (no PCM streaming). `voice` is either
-`builtin` — the speaker shipped inside the checkpoint — or the name of a `.wav`
+`builtin`, the speaker shipped inside the checkpoint, or the name of a `.wav`
 below `/data/custom-voices`, extension stripped, nested paths preserved. Unlike
 Qwen3 no reference transcript is needed, but the clip must be **longer than 5
 seconds**; shorter clips are rejected with a 400. `speed` has no effect and is
@@ -139,9 +149,9 @@ defaults to true, and the backend logs an info line when it is off. See
 [Configuration](configuration.md).
 
 The checkpoint is MIT-licensed and ungated, so the entrypoint downloads it
-without a Hugging Face token. Only the files the model actually loads are
-fetched — the repository also ships a 1 GB `s3gen.safetensors` that this
-backend never reads.
+without a Hugging Face token. Only the files the model loads are fetched;
+the repository also ships a 1 GB `s3gen.safetensors` that this backend never
+reads.
 
 ## Use a custom registry
 
@@ -155,22 +165,39 @@ docker run --rm -it \
   psyb0t/talkies:latest
 ```
 
-Every entry needs a `repo`. Optional `max_concurrency` is an integer from 1 to
-1024 and limits active inference requests across every API surface. `executor`
-defaults to `whisper` and must be one
-of `whisper`, `parakeet`, `parakeet_cpp`, `canary_multitask`, `canary_salm`,
-`kokoro`, `kokoro_nvidia`, `qwen3_tts`, `sherpa`, `sherpa_offline_ctc`, `vosk`,
-`chatterbox`, or `wav2vec2_phoneme`. The entrypoint
-downloads a selected repository into `/data/models/<slug>`. `revision`, when
-set, is supplied to Hugging Face snapshot download; pin it to an immutable
-commit for reproducible contents. An optional `download_patterns` array limits
-the snapshot to static registry-owned paths, which is useful when one repository
-contains several model variants. See [Streaming](streaming.md#sherpa-onnx-and-vosk)
-for the required native-streaming fields.
+A registry is a JSON object with a non-empty `models` object that maps each
+slug to an entry. Every entry needs a `repo`. `executor` defaults to `whisper`
+and must be one of `whisper`, `parakeet`, `parakeet_cpp`, `canary_multitask`,
+`canary_salm`, `kokoro`, `kokoro_nvidia`, `qwen3_tts`, `sherpa`,
+`sherpa_offline_ctc`, `vosk`, `chatterbox`, or `wav2vec2_phoneme`. The
+entrypoint downloads a selected repository into `/data/models/<slug>`. A
+missing `repo`, an unknown `executor` or an invalid `max_concurrency` on any
+entry stops the server at startup, even when that slug is not enabled.
+
+| Field | Used by | Meaning |
+|---|---|---|
+| `repo` | all | Hugging Face repository to download; required |
+| `executor` | all | Backend that runs the model; default `whisper` |
+| `revision` | all | Branch, tag or commit passed to the snapshot download; pin an immutable commit for reproducible contents |
+| `download_patterns` | all | Non-empty array of file patterns that limits the download, useful when one repository holds several variants |
+| `max_concurrency` | all | Integer from 1 to 1024; active inference requests admitted across every API |
+| `dependencies` | all | Extra repositories prefetched into the standard Hugging Face cache, such as `Qwen/Qwen3-1.7B` for `canary-qwen-2.5b` |
+| `default_source_lang` | ASR | Source language used when a request sends no `language` |
+| `default_target_lang` | ASR | Target language passed to the backend; defaults to the source language |
+| `default_task` | ASR | Task passed to the backend, `asr` by default; `ast` reports `translate` in `verbose_json` |
+| `gguf_file` | `parakeet_cpp` | The GGUF file to download and load from the repository |
+| `sherpa_config` | `sherpa`, `sherpa_offline_ctc` | Required recognizer file paths and options; see [Streaming](streaming.md#sherpa-onnx-and-vosk) |
+| `recognizer_factory` | `sherpa` | Sherpa-ONNX online recognizer constructor; default `from_transducer` |
+| `qwen3_mode` | `qwen3_tts` | `base`, `custom_voice` or `voice_design`; default `base` |
+| `default_language` | `qwen3_tts` | Language label used when a request sends none; default `English` |
+
+The bundled registries also carry `languages`, `default_voice` and
+`modality` on some entries. The server does not read them; the backend
+decides the default voice and `GET /v1/models` derives the modality.
 
 Concurrency is an admission limit, not a promise that a backend executes all
 admitted requests simultaneously. A backend may serialize access to a shared
 native context; parakeet.cpp currently does this for feed and finalize calls.
 
 The authoritative bundled entries are
-[`models-cpu.json`](../models-cpu.json) and [`models.json`](../models.json).
+[`models-cpu.json`](https://github.com/psyb0t/docker-talkies/blob/main/models-cpu.json) and [`models.json`](https://github.com/psyb0t/docker-talkies/blob/main/models.json).
