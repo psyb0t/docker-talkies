@@ -7,7 +7,7 @@ How to run each layer: the Dev workflow table in [AGENTS.md](../../AGENTS.md#dev
 ## What every change needs
 
 - **TST1:** `make check` (lint plus unit tests in the dev container) passes before a change is called done. CI does not run it (`.github/workflows/pipeline.yml` only builds images), so this is the only gate.
-- **TST2:** New behaviour gets unit tests in the same change, in `tests/test_<module or backend>.py`, named after the behaviour they pin (`test_symlink_escaping_voices_dir_is_skipped`, `test_pipeline_failure_releases_model_capacity`, `test_shipped_registry_loads`). Use `pytest.mark.parametrize` for input tables; the suite has no pytest configuration file and no custom markers.
+- **TST2:** Unit tests go in `tests/test_<module or backend>.py`. The suite has no pytest configuration file and no custom markers.
 
 ## Unit tests (`tests/`, `make test-unit`)
 
@@ -19,5 +19,5 @@ How to run each layer: the Dev workflow table in [AGENTS.md](../../AGENTS.md#dev
 ## Integration tests (`tests/integration/`)
 
 - **TST7:** Each `test_*.sh` and `e2e_*.sh` file sources `harness.sh`, declares the slugs it needs, starts its own `--rm` container on an ephemeral port, and tears it down on exit, so any file runs alone (`bash tests/integration/test_speech.sh`) or through `run.sh`. The harness defaults to the CUDA image with `--gpus all`; CPU tests set `HARNESS_IMAGE`, `HARNESS_DEVICE` and `HARNESS_USE_GPU` (`e2e_streaming_asr.sh`), and custom registries come in through `HARNESS_MODELS_FILE` (`e2e_streaming_custom_backends.sh` with `streaming-custom-models.json`). Model snapshots are cached in `.e2e-cache/` (`HARNESS_CACHE_DIR`).
-- **TST8:** Integration tests build and run the real images and download model snapshots; none of them is part of `make check` or CI. When a change alters real inference, run the integration or streaming test that covers it, and say in the change which tests ran and which could not (for example, no GPU).
+- **TST8:** Integration tests build and run the real images and download model snapshots; none of them is part of `make check` or CI. When a change alters real inference, run the integration or streaming test that covers it.
 - **TST9:** Only `tests/integration/.fixtures/audio.mp3` and its transcript `audio.mp3.txt` are tracked fixtures; anything else dropped into `.fixtures/` is gitignored (`.gitignore`). `e2e_qwen3_modes.sh` uses the pair as its voice-cloning reference, so keep the transcript matching the audio.

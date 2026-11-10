@@ -15,25 +15,16 @@ Prefix: DOC.
   - Make targets and test suites: `docs/development.md` and the README Development block.
 
   v0.15.3 was a docs-only release because `docs/models.md` and the skill had fallen behind the Chatterbox executor; check every owner above, not only the closest one.
-- **DOC3:** A changed project convention updates `AGENTS.md` or the matching file in `.agents/rules/` in the same change.
-- **DOC15:** `docs/` is a GitHub Pages site (Just the Docs, built from `main` `/docs`). Every page has front matter with a `title`, a `description` of 50 to 170 characters and a `nav_order`, and one `#` heading. Link pages to each other with relative `.md` paths; link any file outside `docs/` with its full `https://github.com/psyb0t/docker-talkies/blob/main/<path>` URL (`tree/main/<dir>` for a directory). Run `make docs` after a docs change and check the output in `.testing/docs-site`.
-
-## Prose style
-
-- **DOC4:** No em dashes or en dashes in new or changed prose: docs, README, skill, plugin manifests, rules, docstrings, comments, commit and tag messages (`5e63fb5`, "drop em dashes from the plugin manifest text"). Use a comma, colon, parentheses or a new sentence. Older files still contain dashes; remove them from lines you edit. The one exception is the CHANGELOG release heading (DOC7).
-- **DOC5:** In `README.md` and `docs/`, match the existing form: headings in sentence case (`## Startup and model storage`, `### Errors and close codes`), prose hard-wrapped near 80 columns, plain specific words with real route, field and variable names. Tables for settings, routes and close codes, as `docs/configuration.md` and `docs/streaming.md` do.
-- **DOC6:** Anything written to other people (release notes, issue replies, the pull request close message in `.github/workflows/collaborators-only.yml`) speaks as one person: "I", never "we", "our" or "the team".
+- **DOC15:** `docs/` is a GitHub Pages site (Just the Docs, built from `main` `/docs`); pages carry a `nav_order`. Run `make docs` after a docs change and check the output in `.testing/docs-site`.
+- **DOC5:** Prose in `README.md` and `docs/` is hard-wrapped near 80 columns, not one paragraph per line; keep that form in edited files. Settings, routes and close codes go in tables, as `docs/configuration.md` and `docs/streaming.md` do.
 
 ## CHANGELOG
 
-- **DOC7:** Every user-visible change gets a `CHANGELOG.md` entry. A release section goes at the top, below the intro: the heading `## vX.Y.Z`, a space, an em dash, a space, and the date as `YYYY-MM-DD` (matching every existing heading), then one summary sentence on its own line, then `### Added`, `### Changed` and `### Fixed` as needed. A docs-only release uses the summary `Documentation. No code changed.` and lists its bullets directly (v0.15.3).
-- **DOC8:** Write each bullet for the user: what they will see, then why, naming the exact slugs, variables, files and fields. Lead an especially notable bullet with a bold sentence, and mark a breaking change with **Breaking.** as the intro requires. A `Fixed` bullet says what went wrong and under which conditions before what happens now.
-- **DOC9:** Versions follow the pre-1.0 semver stated in the CHANGELOG intro: a minor bump for features (it may break, and then says so), a patch bump for docs, build and fixes only.
+- **DOC7:** In `CHANGELOG.md`, a release section goes at the top, below the intro: the heading `## vX.Y.Z`, a space, an em dash, a space, and the date as `YYYY-MM-DD` (matching every existing heading), then one summary sentence on its own line, then `### Added`, `### Changed` and `### Fixed` as needed. A docs-only release uses the summary `Documentation. No code changed.` and lists its bullets directly (v0.15.3).
+- **DOC8:** Mark a breaking change with **Breaking.**, as the CHANGELOG intro requires.
 
 ## Versions, tags and publishing
 
 - **DOC10:** `pyproject.toml` `version` is the canonical version: `make version` prints it and `make build*` tags images `v<version>` from it. A release sets the same version in `.agents/.codex-plugin/plugin.json` in the same commit, including a docs-only release (v0.16.0 fixed a `pyproject.toml` left behind by v0.15.3). `.agents/.claude-plugin/plugin.json` has no version. `server.json`, `.agents/plugins/talkies/package.json` and `.agents/plugins/talkies/openclaw.plugin.json` stay at `0.0.0` in git; the MCP Registry publish workflow writes the tag's version into `server.json` at publish time.
 - **DOC11:** Each release is an annotated tag `vX.Y.Z` on the release commit. The tag message's first line is exactly `vX.Y.Z`, then a blank line, then that release's CHANGELOG section without its `##` heading and `###` subheadings: the summary sentence, a blank line, then the bullets. GitHub titles a release with the tag subject, so the version line keeps the title clean. Tags up to v0.17.0 start with the summary sentence instead.
 - **DOC12:** Pushing a `v*` tag runs `.github/workflows/pipeline.yml`: it builds, scans and pushes both images and creates the GitHub release, then publishes the skill and plugin to ClawHub and `server.json` to the MCP Registry. The registry rejects a `server.json` `description` over 100 characters only after the images are out, so check it before tagging.
-- **DOC13:** Commit subjects use `type(scope): summary` as the recent history does (`feat:`, `fix(sherpa):`, `docs(agents):`, `ci:`), with a body that says what changed and why. Never put `Closes #N`, `Fixes #N` or `Resolves #N` in a commit, tag or release note unless the user said to close that issue.
-- **DOC14:** Never commit, tag, push or publish unless the user asked for that specific action in the current turn.

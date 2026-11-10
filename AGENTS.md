@@ -6,8 +6,6 @@ The project rules live in `.agents/rules/`, one file per topic. They are authori
 
 ## Agent setup
 
-This repository expects the psyb0t rig (`.claude-rig`, or `.codex-rig` once that exists).
-
 `CLAUDE.md` is a committed symlink to `AGENTS.md`, and `.claude` is a committed symlink to `.agents`, so Claude Code reads the same instructions, rules and skills as Codex. Claude's Edit and Write tools refuse to write through a symlink: edit `AGENTS.md` and `.agents/rules/*.md` directly, never the paths under `CLAUDE.md` or `.claude/`.
 
 ## What it is
@@ -148,7 +146,7 @@ Adding a setting:
 
 Adding a route or an MCP tool: [api-design.md](.agents/rules/api-design.md) and [mcp.md](.agents/rules/mcp.md).
 
-Releasing: [docs-and-releases.md](.agents/rules/docs-and-releases.md). Never commit, tag, push or publish unless the user asked for that specific action.
+Releasing: [docs-and-releases.md](.agents/rules/docs-and-releases.md).
 
 ## Rules
 
@@ -162,4 +160,4 @@ Rules for every change: `.agents/rules/`. Read the area file before touching tha
 | `models.md` | `src/talkies/models/`, `models.json`, `models-cpu.json`, `entrypoint.sh`, `voices/`, the Dockerfiles, any `requirements-*.txt`, `scripts/heavy-deps-*.in`, `uv.lock` |
 | `testing.md` | `tests/`, `tests/integration/` |
 | `security.md` | `src/talkies/auth.py`, `files.py`, `downloads.py`, `logging.py`, voice directory handling, Dockerfiles, `.github/workflows/`, `.gitleaks.toml`, `THIRD_PARTY.md` |
-| `docs-and-releases.md` | `README.md`, `docs/`, `CHANGELOG.md`, `.agents/skills/`, any version manifest, commits and tags |
+| `docs-and-releases.md` | `README.md`, `docs/`, `CHANGELOG.md`, `.agents/skills/`, any version manifest, release tags |

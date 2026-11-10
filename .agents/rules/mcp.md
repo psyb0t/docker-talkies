@@ -13,7 +13,6 @@ The MCP server is `build_mcp_server()` in `src/talkies/mcp_server.py`, mounted a
 
 - **MCP3:** A tool reports failure by raising `ValueError` with a caller-readable message, which FastMCP returns as a tool error. Translate the server's exceptions at the tool boundary: `KeyError` to an unknown-model message, `HTTPException` to its `detail`, `FilePathError` and download errors to their message.
 - **MCP4:** File bytes cross MCP as base64 (`put_file` takes `content_base64`, `get_file` returns it), validated with `base64.b64decode(..., validate=True)` and capped at `config.MAX_UPLOAD_BYTES` in both directions, matching `PUT /v1/files/{path}`.
-- **MCP5:** The tool docstring is the description agents read. Document every argument, the accepted values, the return shape and any cost (see `transcribe` and `get_file`).
 - **MCP6:** MCP covers ASR and file staging only; TTS stays on HTTP, and `list_models` filters out non-ASR backends. The tool count is written out in several places: the `_log.info("mcp server initialised: 6 tools")` line and module docstring in `mcp_server.py`, the `description` in `.agents/plugins/talkies/openclaw.plugin.json`, the Tools section of `.agents/plugins/talkies/README.md`, the skill's description and MCP section in `.agents/skills/talkies/SKILL.md`, and the MCP section of `docs/api.md`. Adding, removing or renaming a tool updates all of them in the same change.
 
 ## Bridge plugin
