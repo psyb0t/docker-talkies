@@ -7,7 +7,7 @@ seo:
   type: WebSite
 ---
 
-# Talkies
+# talkies
 
 Talkies is a self-hosted speech service in one Docker image. It puts open ASR
 and TTS models (Whisper, Parakeet, Canary, Nemotron, Sherpa-ONNX, Vosk, two
