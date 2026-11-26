@@ -52,7 +52,9 @@ def sync_detailed(
     *,
     client: Union[AuthenticatedClient, Client],
 ) -> Response[Union[Any, HTTPValidationError]]:
-    """Files Delete
+    """Delete a staged file
+
+     Remove the file at the requested staging path. The response identifies the deleted file.
 
     Args:
         path (str):
@@ -81,7 +83,9 @@ def sync(
     *,
     client: Union[AuthenticatedClient, Client],
 ) -> Optional[Union[Any, HTTPValidationError]]:
-    """Files Delete
+    """Delete a staged file
+
+     Remove the file at the requested staging path. The response identifies the deleted file.
 
     Args:
         path (str):
@@ -105,7 +109,9 @@ async def asyncio_detailed(
     *,
     client: Union[AuthenticatedClient, Client],
 ) -> Response[Union[Any, HTTPValidationError]]:
-    """Files Delete
+    """Delete a staged file
+
+     Remove the file at the requested staging path. The response identifies the deleted file.
 
     Args:
         path (str):
@@ -132,7 +138,9 @@ async def asyncio(
     *,
     client: Union[AuthenticatedClient, Client],
 ) -> Optional[Union[Any, HTTPValidationError]]:
-    """Files Delete
+    """Delete a staged file
+
+     Remove the file at the requested staging path. The response identifies the deleted file.
 
     Args:
         path (str):

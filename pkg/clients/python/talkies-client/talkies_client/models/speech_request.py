@@ -20,19 +20,20 @@ class SpeechRequest:
     ``speed`` clamped to 0.25-4.0 (matches OpenAI's documented range).
 
         Attributes:
-            model (str):
-            input_ (str):
-            voice (Union[None, Unset, str]):
-            response_format (Union[None, Unset, str]):
-            speed (Union[None, Unset, float]):
-            instructions (Union[None, Unset, str]):
-            language (Union[None, Unset, str]):
-            temperature (Union[None, Unset, float]):
-            top_k (Union[None, Unset, int]):
-            top_p (Union[None, Unset, float]):
-            repetition_penalty (Union[None, Unset, float]):
-            max_new_tokens (Union[None, Unset, int]):
-            do_sample (Union[None, Unset, bool]):
+            model (str): ID of a configured speech model from GET /v1/models.
+            input_ (str): Text to read aloud.
+            voice (Union[None, Unset, str]): Voice ID for this model. Omit to use its default voice.
+            response_format (Union[None, Unset, str]): Audio encoding. Use mp3, opus, aac, flac, wav or pcm. The default is
+                mp3.
+            speed (Union[None, Unset, float]): Playback speed multiplier. A value of 1 is normal speed.
+            instructions (Union[None, Unset, str]): Delivery or style instructions for models that support them.
+            language (Union[None, Unset, str]): Optional spoken language for a backend that accepts it.
+            temperature (Union[None, Unset, float]): Sampling temperature for Qwen3 speech.
+            top_k (Union[None, Unset, int]): Maximum number of candidate tokens during Qwen3 sampling.
+            top_p (Union[None, Unset, float]): Cumulative probability cutoff for Qwen3 sampling.
+            repetition_penalty (Union[None, Unset, float]): Penalty applied to repeated codec tokens by Qwen3.
+            max_new_tokens (Union[None, Unset, int]): Maximum number of codec tokens produced by Qwen3.
+            do_sample (Union[None, Unset, bool]): Use sampling in Qwen3. Set false for greedy decoding.
     """
 
     model: str

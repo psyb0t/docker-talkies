@@ -54,6 +54,9 @@ def sync_detailed(
 ) -> Response[Union[Any, HTTPValidationError]]:
     """Unload a model
 
+     Release the loaded model with the given ID. A model with active inference requests cannot be
+    unloaded.
+
     Args:
         model_id (str):
 
@@ -83,6 +86,9 @@ def sync(
 ) -> Optional[Union[Any, HTTPValidationError]]:
     """Unload a model
 
+     Release the loaded model with the given ID. A model with active inference requests cannot be
+    unloaded.
+
     Args:
         model_id (str):
 
@@ -106,6 +112,9 @@ async def asyncio_detailed(
     client: Union[AuthenticatedClient, Client],
 ) -> Response[Union[Any, HTTPValidationError]]:
     """Unload a model
+
+     Release the loaded model with the given ID. A model with active inference requests cannot be
+    unloaded.
 
     Args:
         model_id (str):
@@ -133,6 +142,9 @@ async def asyncio(
     client: Union[AuthenticatedClient, Client],
 ) -> Optional[Union[Any, HTTPValidationError]]:
     """Unload a model
+
+     Release the loaded model with the given ID. A model with active inference requests cannot be
+    unloaded.
 
     Args:
         model_id (str):

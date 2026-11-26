@@ -48,7 +48,10 @@ def sync_detailed(
     *,
     client: Union[AuthenticatedClient, Client],
 ) -> Response[ListModelsV1ModelsGetResponseListModelsV1ModelsGet]:
-    """List Models
+    """List available models
+
+     Return model IDs, capabilities and concurrency limits. Select a transcription or speech model by its
+    ID in the corresponding request.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -71,7 +74,10 @@ def sync(
     *,
     client: Union[AuthenticatedClient, Client],
 ) -> Optional[ListModelsV1ModelsGetResponseListModelsV1ModelsGet]:
-    """List Models
+    """List available models
+
+     Return model IDs, capabilities and concurrency limits. Select a transcription or speech model by its
+    ID in the corresponding request.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -90,7 +96,10 @@ async def asyncio_detailed(
     *,
     client: Union[AuthenticatedClient, Client],
 ) -> Response[ListModelsV1ModelsGetResponseListModelsV1ModelsGet]:
-    """List Models
+    """List available models
+
+     Return model IDs, capabilities and concurrency limits. Select a transcription or speech model by its
+    ID in the corresponding request.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -111,7 +120,10 @@ async def asyncio(
     *,
     client: Union[AuthenticatedClient, Client],
 ) -> Optional[ListModelsV1ModelsGetResponseListModelsV1ModelsGet]:
-    """List Models
+    """List available models
+
+     Return model IDs, capabilities and concurrency limits. Select a transcription or speech model by its
+    ID in the corresponding request.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.

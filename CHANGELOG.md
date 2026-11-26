@@ -4,6 +4,10 @@ All notable changes per release. Versions follow [semver](https://semver.org)
 pre-1.0 conventions: minor bumps may include breaking changes (called out
 explicitly with **Breaking.**), patch bumps are docs / build / fixes only.
 
+## [Unreleased]
+
+- Document every REST operation and add example requests and field descriptions for speech synthesis and transcription.
+
 ## v0.18.0. 2026-11-26
 
 - Generate OpenAPI YAML, a typed Python client, and a REST reference grouped by endpoint tags.

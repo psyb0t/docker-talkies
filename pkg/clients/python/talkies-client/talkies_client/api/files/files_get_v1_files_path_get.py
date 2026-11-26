@@ -54,7 +54,9 @@ def sync_detailed(
     *,
     client: Union[AuthenticatedClient, Client],
 ) -> Response[Union[File, HTTPValidationError]]:
-    """Files Get
+    """Download a staged file
+
+     Return the stored bytes for the requested staging path.
 
     Args:
         path (str):
@@ -83,7 +85,9 @@ def sync(
     *,
     client: Union[AuthenticatedClient, Client],
 ) -> Optional[Union[File, HTTPValidationError]]:
-    """Files Get
+    """Download a staged file
+
+     Return the stored bytes for the requested staging path.
 
     Args:
         path (str):
@@ -107,7 +111,9 @@ async def asyncio_detailed(
     *,
     client: Union[AuthenticatedClient, Client],
 ) -> Response[Union[File, HTTPValidationError]]:
-    """Files Get
+    """Download a staged file
+
+     Return the stored bytes for the requested staging path.
 
     Args:
         path (str):
@@ -134,7 +140,9 @@ async def asyncio(
     *,
     client: Union[AuthenticatedClient, Client],
 ) -> Optional[Union[File, HTTPValidationError]]:
-    """Files Get
+    """Download a staged file
+
+     Return the stored bytes for the requested staging path.
 
     Args:
         path (str):

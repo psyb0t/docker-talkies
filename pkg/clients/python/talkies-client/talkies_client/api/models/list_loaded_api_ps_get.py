@@ -50,6 +50,9 @@ def sync_detailed(
 ) -> Response[ListLoadedApiPsGetResponseListLoadedApiPsGet]:
     """List loaded models
 
+     Inspect the models currently in memory. The available-models list also includes models that can load
+    on demand.
+
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
@@ -73,6 +76,9 @@ def sync(
 ) -> Optional[ListLoadedApiPsGetResponseListLoadedApiPsGet]:
     """List loaded models
 
+     Inspect the models currently in memory. The available-models list also includes models that can load
+    on demand.
+
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
@@ -91,6 +97,9 @@ async def asyncio_detailed(
     client: Union[AuthenticatedClient, Client],
 ) -> Response[ListLoadedApiPsGetResponseListLoadedApiPsGet]:
     """List loaded models
+
+     Inspect the models currently in memory. The available-models list also includes models that can load
+    on demand.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -112,6 +121,9 @@ async def asyncio(
     client: Union[AuthenticatedClient, Client],
 ) -> Optional[ListLoadedApiPsGetResponseListLoadedApiPsGet]:
     """List loaded models
+
+     Inspect the models currently in memory. The available-models list also includes models that can load
+    on demand.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.

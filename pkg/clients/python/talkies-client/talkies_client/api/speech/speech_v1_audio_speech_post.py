@@ -63,7 +63,10 @@ def sync_detailed(
     client: Union[AuthenticatedClient, Client],
     body: SpeechRequest,
 ) -> Response[Union[File, HTTPValidationError]]:
-    """Speech
+    """Synthesize speech
+
+     Turn text into speech using a configured model. Pick a voice from that model's voice list. PCM can
+    stream incrementally when the backend supports it.
 
     Args:
         body (SpeechRequest): OpenAI-compatible POST body for ``/v1/audio/speech``.
@@ -98,7 +101,10 @@ def sync(
     client: Union[AuthenticatedClient, Client],
     body: SpeechRequest,
 ) -> Optional[Union[File, HTTPValidationError]]:
-    """Speech
+    """Synthesize speech
+
+     Turn text into speech using a configured model. Pick a voice from that model's voice list. PCM can
+    stream incrementally when the backend supports it.
 
     Args:
         body (SpeechRequest): OpenAI-compatible POST body for ``/v1/audio/speech``.
@@ -128,7 +134,10 @@ async def asyncio_detailed(
     client: Union[AuthenticatedClient, Client],
     body: SpeechRequest,
 ) -> Response[Union[File, HTTPValidationError]]:
-    """Speech
+    """Synthesize speech
+
+     Turn text into speech using a configured model. Pick a voice from that model's voice list. PCM can
+    stream incrementally when the backend supports it.
 
     Args:
         body (SpeechRequest): OpenAI-compatible POST body for ``/v1/audio/speech``.
@@ -161,7 +170,10 @@ async def asyncio(
     client: Union[AuthenticatedClient, Client],
     body: SpeechRequest,
 ) -> Optional[Union[File, HTTPValidationError]]:
-    """Speech
+    """Synthesize speech
+
+     Turn text into speech using a configured model. Pick a voice from that model's voice list. PCM can
+    stream incrementally when the backend supports it.
 
     Args:
         body (SpeechRequest): OpenAI-compatible POST body for ``/v1/audio/speech``.

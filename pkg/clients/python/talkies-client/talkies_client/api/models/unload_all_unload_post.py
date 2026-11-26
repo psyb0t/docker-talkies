@@ -50,6 +50,9 @@ def sync_detailed(
 ) -> Response[UnloadAllUnloadPostResponseUnloadAllUnloadPost]:
     """Unload all models
 
+     Release all loaded models and return their IDs. The server refuses the request while inference is
+    active.
+
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
@@ -73,6 +76,9 @@ def sync(
 ) -> Optional[UnloadAllUnloadPostResponseUnloadAllUnloadPost]:
     """Unload all models
 
+     Release all loaded models and return their IDs. The server refuses the request while inference is
+    active.
+
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
@@ -91,6 +97,9 @@ async def asyncio_detailed(
     client: Union[AuthenticatedClient, Client],
 ) -> Response[UnloadAllUnloadPostResponseUnloadAllUnloadPost]:
     """Unload all models
+
+     Release all loaded models and return their IDs. The server refuses the request while inference is
+    active.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -112,6 +121,9 @@ async def asyncio(
     client: Union[AuthenticatedClient, Client],
 ) -> Optional[UnloadAllUnloadPostResponseUnloadAllUnloadPost]:
     """Unload all models
+
+     Release all loaded models and return their IDs. The server refuses the request while inference is
+    active.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.

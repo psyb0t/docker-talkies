@@ -48,7 +48,7 @@ def sync_detailed(
     *,
     client: Union[AuthenticatedClient, Client],
 ) -> Response[ListVoicesV1AudioVoicesGetResponseListVoicesV1AudioVoicesGet]:
-    r"""List Voices
+    r"""List speech voices
 
      List available TTS voices across all loaded TTS models.
 
@@ -83,7 +83,7 @@ def sync(
     *,
     client: Union[AuthenticatedClient, Client],
 ) -> Optional[ListVoicesV1AudioVoicesGetResponseListVoicesV1AudioVoicesGet]:
-    r"""List Voices
+    r"""List speech voices
 
      List available TTS voices across all loaded TTS models.
 
@@ -114,7 +114,7 @@ async def asyncio_detailed(
     *,
     client: Union[AuthenticatedClient, Client],
 ) -> Response[ListVoicesV1AudioVoicesGetResponseListVoicesV1AudioVoicesGet]:
-    r"""List Voices
+    r"""List speech voices
 
      List available TTS voices across all loaded TTS models.
 
@@ -147,7 +147,7 @@ async def asyncio(
     *,
     client: Union[AuthenticatedClient, Client],
 ) -> Optional[ListVoicesV1AudioVoicesGetResponseListVoicesV1AudioVoicesGet]:
-    r"""List Voices
+    r"""List speech voices
 
      List available TTS voices across all loaded TTS models.
 

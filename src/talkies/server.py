@@ -351,7 +351,15 @@ app.add_middleware(BearerAuthMiddleware, token=config.AUTH_TOKEN)
 app.add_middleware(_MCPSlashRewriteMiddleware)
 
 
-@app.get("/healthz", tags=[_SERVICE_TAG], summary="Check service health")
+@app.get(
+    "/healthz",
+    tags=[_SERVICE_TAG],
+    summary="Check service health",
+    description=(
+        "Check that Talkies is responding and see its device and configured model "
+        "IDs."
+    ),
+)
 def healthz() -> dict[str, Any]:
     return {"ok": True, "device": DEVICE, "models": list(BACKENDS.keys())}
 
@@ -363,7 +371,15 @@ def _modality_of(model_id: str) -> str:
     return "asr"
 
 
-@app.get("/v1/models", tags=[_MODEL_TAG])
+@app.get(
+    "/v1/models",
+    tags=[_MODEL_TAG],
+    summary="List available models",
+    description=(
+        "Return model IDs, capabilities and concurrency limits. Select a "
+        "transcription or speech model by its ID in the corresponding request."
+    ),
+)
 def list_models() -> dict[str, Any]:
     return {
         "object": "list",
@@ -380,7 +396,11 @@ def list_models() -> dict[str, Any]:
     }
 
 
-@app.get("/v1/audio/voices", tags=[_SPEECH_TAG])
+@app.get(
+    "/v1/audio/voices",
+    tags=[_SPEECH_TAG],
+    summary="List speech voices",
+)
 def list_voices() -> dict[str, Any]:
     """List available TTS voices across all loaded TTS models.
 
@@ -418,7 +438,15 @@ def list_voices() -> dict[str, Any]:
     return {"voices": out}
 
 
-@app.get("/api/ps", tags=[_MODEL_TAG], summary="List loaded models")
+@app.get(
+    "/api/ps",
+    tags=[_MODEL_TAG],
+    summary="List loaded models",
+    description=(
+        "Inspect the models currently in memory. The available-models list also "
+        "includes models that can load on demand."
+    ),
+)
 def list_loaded() -> dict[str, Any]:
     return {
         "models": [
@@ -676,7 +704,13 @@ async def transcribe_stream(websocket: WebSocket) -> None:
 
 
 @app.delete(
-    "/api/ps/{model_id:path}", tags=[_MODEL_TAG], summary="Unload a model"
+    "/api/ps/{model_id:path}",
+    tags=[_MODEL_TAG],
+    summary="Unload a model",
+    description=(
+        "Release the loaded model with the given ID. A model with active "
+        "inference requests cannot be unloaded."
+    ),
 )
 async def unload_one(model_id: str) -> JSONResponse:
     decoded = unquote(model_id)
@@ -696,7 +730,15 @@ async def unload_one(model_id: str) -> JSONResponse:
     return JSONResponse({"unloaded": decoded}, status_code=200)
 
 
-@app.post("/unload", tags=[_MODEL_TAG], summary="Unload all models")
+@app.post(
+    "/unload",
+    tags=[_MODEL_TAG],
+    summary="Unload all models",
+    description=(
+        "Release all loaded models and return their IDs. The server refuses the "
+        "request while inference is active."
+    ),
+)
 async def unload_all() -> dict[str, Any]:
     async with _model_lock:
         if _active_request_count():
@@ -757,12 +799,31 @@ class SpeechRequest(BaseModel):
     ``speed`` clamped to 0.25-4.0 (matches OpenAI's documented range).
     """
 
-    model: str
-    input: str
-    voice: str | None = None
-    response_format: str | None = None
-    speed: float | None = Field(default=None, ge=0.25, le=4.0)
-    instructions: str | None = None
+    model: str = Field(
+        description="ID of a configured speech model from GET /v1/models.",
+    )
+    input: str = Field(description="Text to read aloud.")
+    voice: str | None = Field(
+        default=None,
+        description="Voice ID for this model. Omit to use its default voice.",
+    )
+    response_format: str | None = Field(
+        default=None,
+        description=(
+            "Audio encoding. Use mp3, opus, aac, flac, wav or pcm. "
+            "The default is mp3."
+        ),
+    )
+    speed: float | None = Field(
+        default=None,
+        ge=0.25,
+        le=4.0,
+        description="Playback speed multiplier. A value of 1 is normal speed.",
+    )
+    instructions: str | None = Field(
+        default=None,
+        description="Delivery or style instructions for models that support them.",
+    )
     # Non-OpenAI extra params — OpenAI SDKs send via extra_body={...}; cURL just
     # adds JSON keys. All are silently ignored by backends that don't use them
     # (Kokoro). Qwen3-TTS reads them across all three modes.
@@ -775,18 +836,68 @@ class SpeechRequest(BaseModel):
     # `repetition_penalty` — penalize codec-token repeats (Qwen3 only; default 1.05).
     # `max_new_tokens`     — codec-step cap (Qwen3 only; default 2048 = model max).
     # `do_sample`          — false = greedy decode (Qwen3 only; default true).
-    language: str | None = None
-    temperature: float | None = Field(default=None, ge=0.0, le=2.0)
-    top_k: int | None = Field(default=None, ge=1, le=1000)
-    top_p: float | None = Field(default=None, ge=0.0, le=1.0)
-    repetition_penalty: float | None = Field(default=None, ge=0.5, le=2.0)
-    max_new_tokens: int | None = Field(default=None, ge=1, le=2048)
-    do_sample: bool | None = None
+    language: str | None = Field(
+        default=None,
+        description="Optional spoken language for a backend that accepts it.",
+    )
+    temperature: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=2.0,
+        description="Sampling temperature for Qwen3 speech.",
+    )
+    top_k: int | None = Field(
+        default=None,
+        ge=1,
+        le=1000,
+        description="Maximum number of candidate tokens during Qwen3 sampling.",
+    )
+    top_p: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="Cumulative probability cutoff for Qwen3 sampling.",
+    )
+    repetition_penalty: float | None = Field(
+        default=None,
+        ge=0.5,
+        le=2.0,
+        description="Penalty applied to repeated codec tokens by Qwen3.",
+    )
+    max_new_tokens: int | None = Field(
+        default=None,
+        ge=1,
+        le=2048,
+        description="Maximum number of codec tokens produced by Qwen3.",
+    )
+    do_sample: bool | None = Field(
+        default=None,
+        description="Use sampling in Qwen3. Set false for greedy decoding.",
+    )
 
 
 @app.post(
     "/v1/audio/speech",
     tags=[_SPEECH_TAG],
+    summary="Synthesize speech",
+    description=(
+        "Turn text into speech using a configured model. Pick a voice from that "
+        "model's voice list. PCM can stream incrementally when the backend "
+        "supports it."
+    ),
+    openapi_extra={
+        "requestBody": {
+            "content": {
+                "application/json": {
+                    "example": {
+                        "model": "kokoro-82m",
+                        "input": "The recording starts now.",
+                        "response_format": "wav",
+                    }
+                }
+            }
+        }
+    },
     response_class=Response,
     responses={
         200: {
@@ -979,10 +1090,26 @@ async def speech(body: SpeechRequest) -> Response:
 @app.post(
     "/v1/audio/transcriptions",
     tags=[_TRANSCRIPTION_TAG],
+    summary="Transcribe audio",
     description=(
-        "Transcribe an uploaded audio file, a staged path, or an HTTP(S) URL. "
-        "Provide exactly one of file or file_path."
+        "Send a multipart request with either a file upload or a file_path "
+        "containing a staged path or an HTTP(S) URL. Select a transcription "
+        "model. The requested format determines whether the response is JSON, "
+        "plain text or subtitles."
     ),
+    openapi_extra={
+        "requestBody": {
+            "content": {
+                "multipart/form-data": {
+                    "example": {
+                        "model": "whisper-large-v3-turbo",
+                        "file_path": "uploads/interview.wav",
+                        "response_format": "verbose_json",
+                    }
+                }
+            }
+        }
+    },
     responses={
         200: {
             "description": "Transcript or subtitles in the requested response format.",
@@ -996,17 +1123,33 @@ async def speech(body: SpeechRequest) -> Response:
     },
 )
 async def transcribe(
-    file: UploadFile | None = File(default=None),
-    file_path: str | None = Form(default=None),
-    model: str = Form(...),
-    language: str | None = Form(default=None),
-    response_format: str = Form(default="json"),
-    prompt: str | None = Form(default=None),
-    temperature: float | None = Form(default=None),
-    timestamp_granularities: list[str] = Form(
-        default=[], alias="timestamp_granularities[]"
+    file: UploadFile | None = File(
+        default=None, description="Audio to upload. Omit when using file_path."
     ),
-    diarization: str | None = Form(default=None),
+    file_path: str | None = Form(
+        default=None, description="Staged path or URL. Omit with a file upload."
+    ),
+    model: str = Form(..., description="ID of a configured transcription model."),
+    language: str | None = Form(
+        default=None, description="Language hint for models that support it."
+    ),
+    response_format: str = Form(
+        default="json", description="Transcript format such as json, text, srt or vtt."
+    ),
+    prompt: str | None = Form(
+        default=None, description="Accepted for OpenAI compatibility and ignored."
+    ),
+    temperature: float | None = Form(
+        default=None, description="Accepted for OpenAI compatibility and ignored."
+    ),
+    timestamp_granularities: list[str] = Form(
+        default=[],
+        alias="timestamp_granularities[]",
+        description="OpenAI timestamp option. Verbose JSON returns both levels.",
+    ),
+    diarization: str | None = Form(
+        default=None, description="Set true to transcribe stereo channels separately."
+    ),
 ) -> Any:
     if log.isEnabledFor(logging.DEBUG):
         log.debug(
@@ -1262,7 +1405,12 @@ def _resolve_files_path(raw: str) -> Any:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@app.get("/v1/files", tags=[_FILE_TAG])
+@app.get(
+    "/v1/files",
+    tags=[_FILE_TAG],
+    summary="List staged files",
+    description="Return the relative paths and sizes of files in the staging area.",
+)
 def files_list() -> dict[str, Any]:
     return {"files": files_mod.list_files(config.FILES_DIR)}
 
@@ -1270,6 +1418,11 @@ def files_list() -> dict[str, Any]:
 @app.put(
     "/v1/files/{path:path}",
     tags=[_FILE_TAG],
+    summary="Upload a staged file",
+    description=(
+        "Send the file as raw bytes. Use the relative path from the URL as "
+        "file_path in a later transcription request."
+    ),
     status_code=201,
     openapi_extra={
         "requestBody": {
@@ -1313,6 +1466,8 @@ async def files_put(path: str, request: Request) -> JSONResponse:
 @app.get(
     "/v1/files/{path:path}",
     tags=[_FILE_TAG],
+    summary="Download a staged file",
+    description="Return the stored bytes for the requested staging path.",
     response_class=FileResponse,
     responses={
         200: {
@@ -1333,7 +1488,15 @@ def files_get(path: str) -> FileResponse:
     )
 
 
-@app.delete("/v1/files/{path:path}", tags=[_FILE_TAG])
+@app.delete(
+    "/v1/files/{path:path}",
+    tags=[_FILE_TAG],
+    summary="Delete a staged file",
+    description=(
+        "Remove the file at the requested staging path. The response identifies "
+        "the deleted file."
+    ),
+)
 def files_delete(path: str) -> JSONResponse:
     target, rel_str = _resolve_files_path(path)
     if target.is_symlink() or not target.is_file():

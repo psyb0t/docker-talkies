@@ -11,6 +11,8 @@ paths:
       tags:
       - Service
       summary: Check service health
+      description: Check that Talkies is responding and see its device and configured
+        model IDs.
       operationId: healthz_healthz_get
       responses:
         '200':
@@ -25,7 +27,9 @@ paths:
     get:
       tags:
       - Models
-      summary: List Models
+      summary: List available models
+      description: Return model IDs, capabilities and concurrency limits. Select a
+        transcription or speech model by its ID in the corresponding request.
       operationId: list_models_v1_models_get
       responses:
         '200':
@@ -40,7 +44,7 @@ paths:
     get:
       tags:
       - Speech
-      summary: List Voices
+      summary: List speech voices
       description: "List available TTS voices across all loaded TTS models.\n\nReturned\
         \ shape: ``{\"voices\": [{\"voice\": str, \"model\": str,\n\"default\": bool,\
         \ \"origin\": str?}]}``. Pass any ``voice`` value to\n``POST /v1/audio/speech``\
@@ -64,6 +68,8 @@ paths:
       tags:
       - Models
       summary: List loaded models
+      description: Inspect the models currently in memory. The available-models list
+        also includes models that can load on demand.
       operationId: list_loaded_api_ps_get
       responses:
         '200':
@@ -79,6 +85,8 @@ paths:
       tags:
       - Models
       summary: Unload a model
+      description: Release the loaded model with the given ID. A model with active
+        inference requests cannot be unloaded.
       operationId: unload_one_api_ps__model_id__delete
       parameters:
       - name: model_id
@@ -104,6 +112,8 @@ paths:
       tags:
       - Models
       summary: Unload all models
+      description: Release all loaded models and return their IDs. The server refuses
+        the request while inference is active.
       operationId: unload_all_unload_post
       responses:
         '200':
@@ -118,13 +128,20 @@ paths:
     post:
       tags:
       - Speech
-      summary: Speech
+      summary: Synthesize speech
+      description: Turn text into speech using a configured model. Pick a voice from
+        that model's voice list. PCM can stream incrementally when the backend supports
+        it.
       operationId: speech_v1_audio_speech_post
       requestBody:
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/SpeechRequest'
+            example:
+              model: kokoro-82m
+              input: The recording starts now.
+              response_format: wav
         required: true
       responses:
         '200':
@@ -164,15 +181,21 @@ paths:
     post:
       tags:
       - Transcription
-      summary: Transcribe
-      description: Transcribe an uploaded audio file, a staged path, or an HTTP(S)
-        URL. Provide exactly one of file or file_path.
+      summary: Transcribe audio
+      description: Send a multipart request with either a file upload or a file_path
+        containing a staged path or an HTTP(S) URL. Select a transcription model.
+        The requested format determines whether the response is JSON, plain text or
+        subtitles.
       operationId: transcribe_v1_audio_transcriptions_post
       requestBody:
         content:
           multipart/form-data:
             schema:
               $ref: '#/components/schemas/Body_transcribe_v1_audio_transcriptions_post'
+            example:
+              model: whisper-large-v3-turbo
+              file_path: uploads/interview.wav
+              response_format: verbose_json
         required: true
       responses:
         '200':
@@ -201,7 +224,8 @@ paths:
     get:
       tags:
       - Files
-      summary: Files List
+      summary: List staged files
+      description: Return the relative paths and sizes of files in the staging area.
       operationId: files_list_v1_files_get
       responses:
         '200':
@@ -216,7 +240,9 @@ paths:
     put:
       tags:
       - Files
-      summary: Files Put
+      summary: Upload a staged file
+      description: Send the file as raw bytes. Use the relative path from the URL
+        as file_path in a later transcription request.
       operationId: files_put_v1_files__path__put
       parameters:
       - name: path
@@ -256,7 +282,8 @@ paths:
     get:
       tags:
       - Files
-      summary: Files Get
+      summary: Download a staged file
+      description: Return the stored bytes for the requested staging path.
       operationId: files_get_v1_files__path__get
       parameters:
       - name: path
@@ -282,7 +309,9 @@ paths:
     delete:
       tags:
       - Files
-      summary: Files Delete
+      summary: Delete a staged file
+      description: Remove the file at the requested staging path. The response identifies
+        the deleted file.
       operationId: files_delete_v1_files__path__delete
       parameters:
       - name: path
@@ -313,44 +342,53 @@ components:
             contentMediaType: application/octet-stream
           - type: 'null'
           title: File
+          description: Audio to upload. Omit when using file_path.
         file_path:
           anyOf:
           - type: string
           - type: 'null'
           title: File Path
+          description: Staged path or URL. Omit with a file upload.
         model:
           type: string
           title: Model
+          description: ID of a configured transcription model.
         language:
           anyOf:
           - type: string
           - type: 'null'
           title: Language
+          description: Language hint for models that support it.
         response_format:
           type: string
           title: Response Format
+          description: Transcript format such as json, text, srt or vtt.
           default: json
         prompt:
           anyOf:
           - type: string
           - type: 'null'
           title: Prompt
+          description: Accepted for OpenAI compatibility and ignored.
         temperature:
           anyOf:
           - type: number
           - type: 'null'
           title: Temperature
+          description: Accepted for OpenAI compatibility and ignored.
         timestamp_granularities[]:
           items:
             type: string
           type: array
           title: Timestamp Granularities[]
+          description: OpenAI timestamp option. Verbose JSON returns both levels.
           default: []
         diarization:
           anyOf:
           - type: string
           - type: 'null'
           title: Diarization
+          description: Set true to transcribe stereo channels separately.
       type: object
       required:
       - model
@@ -369,19 +407,24 @@ components:
         model:
           type: string
           title: Model
+          description: ID of a configured speech model from GET /v1/models.
         input:
           type: string
           title: Input
+          description: Text to read aloud.
         voice:
           anyOf:
           - type: string
           - type: 'null'
           title: Voice
+          description: Voice ID for this model. Omit to use its default voice.
         response_format:
           anyOf:
           - type: string
           - type: 'null'
           title: Response Format
+          description: Audio encoding. Use mp3, opus, aac, flac, wav or pcm. The default
+            is mp3.
         speed:
           anyOf:
           - type: number
@@ -389,16 +432,19 @@ components:
             minimum: 0.25
           - type: 'null'
           title: Speed
+          description: Playback speed multiplier. A value of 1 is normal speed.
         instructions:
           anyOf:
           - type: string
           - type: 'null'
           title: Instructions
+          description: Delivery or style instructions for models that support them.
         language:
           anyOf:
           - type: string
           - type: 'null'
           title: Language
+          description: Optional spoken language for a backend that accepts it.
         temperature:
           anyOf:
           - type: number
@@ -406,6 +452,7 @@ components:
             minimum: 0.0
           - type: 'null'
           title: Temperature
+          description: Sampling temperature for Qwen3 speech.
         top_k:
           anyOf:
           - type: integer
@@ -413,6 +460,7 @@ components:
             minimum: 1.0
           - type: 'null'
           title: Top K
+          description: Maximum number of candidate tokens during Qwen3 sampling.
         top_p:
           anyOf:
           - type: number
@@ -420,6 +468,7 @@ components:
             minimum: 0.0
           - type: 'null'
           title: Top P
+          description: Cumulative probability cutoff for Qwen3 sampling.
         repetition_penalty:
           anyOf:
           - type: number
@@ -427,6 +476,7 @@ components:
             minimum: 0.5
           - type: 'null'
           title: Repetition Penalty
+          description: Penalty applied to repeated codec tokens by Qwen3.
         max_new_tokens:
           anyOf:
           - type: integer
@@ -434,11 +484,13 @@ components:
             minimum: 1.0
           - type: 'null'
           title: Max New Tokens
+          description: Maximum number of codec tokens produced by Qwen3.
         do_sample:
           anyOf:
           - type: boolean
           - type: 'null'
           title: Do Sample
+          description: Use sampling in Qwen3. Set false for greedy decoding.
       type: object
       required:
       - model

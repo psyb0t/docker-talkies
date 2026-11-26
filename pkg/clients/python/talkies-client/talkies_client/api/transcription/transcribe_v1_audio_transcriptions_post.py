@@ -59,10 +59,11 @@ def sync_detailed(
     client: Union[AuthenticatedClient, Client],
     body: BodyTranscribeV1AudioTranscriptionsPost,
 ) -> Response[Union[HTTPValidationError, str]]:
-    """Transcribe
+    """Transcribe audio
 
-     Transcribe an uploaded audio file, a staged path, or an HTTP(S) URL. Provide exactly one of file or
-    file_path.
+     Send a multipart request with either a file upload or a file_path containing a staged path or an
+    HTTP(S) URL. Select a transcription model. The requested format determines whether the response is
+    JSON, plain text or subtitles.
 
     Args:
         body (BodyTranscribeV1AudioTranscriptionsPost):
@@ -91,10 +92,11 @@ def sync(
     client: Union[AuthenticatedClient, Client],
     body: BodyTranscribeV1AudioTranscriptionsPost,
 ) -> Optional[Union[HTTPValidationError, str]]:
-    """Transcribe
+    """Transcribe audio
 
-     Transcribe an uploaded audio file, a staged path, or an HTTP(S) URL. Provide exactly one of file or
-    file_path.
+     Send a multipart request with either a file upload or a file_path containing a staged path or an
+    HTTP(S) URL. Select a transcription model. The requested format determines whether the response is
+    JSON, plain text or subtitles.
 
     Args:
         body (BodyTranscribeV1AudioTranscriptionsPost):
@@ -118,10 +120,11 @@ async def asyncio_detailed(
     client: Union[AuthenticatedClient, Client],
     body: BodyTranscribeV1AudioTranscriptionsPost,
 ) -> Response[Union[HTTPValidationError, str]]:
-    """Transcribe
+    """Transcribe audio
 
-     Transcribe an uploaded audio file, a staged path, or an HTTP(S) URL. Provide exactly one of file or
-    file_path.
+     Send a multipart request with either a file upload or a file_path containing a staged path or an
+    HTTP(S) URL. Select a transcription model. The requested format determines whether the response is
+    JSON, plain text or subtitles.
 
     Args:
         body (BodyTranscribeV1AudioTranscriptionsPost):
@@ -148,10 +151,11 @@ async def asyncio(
     client: Union[AuthenticatedClient, Client],
     body: BodyTranscribeV1AudioTranscriptionsPost,
 ) -> Optional[Union[HTTPValidationError, str]]:
-    """Transcribe
+    """Transcribe audio
 
-     Transcribe an uploaded audio file, a staged path, or an HTTP(S) URL. Provide exactly one of file or
-    file_path.
+     Send a multipart request with either a file upload or a file_path containing a staged path or an
+    HTTP(S) URL. Select a transcription model. The requested format determines whether the response is
+    JSON, plain text or subtitles.
 
     Args:
         body (BodyTranscribeV1AudioTranscriptionsPost):

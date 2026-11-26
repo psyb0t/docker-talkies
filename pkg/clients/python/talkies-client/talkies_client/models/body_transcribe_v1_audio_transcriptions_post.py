@@ -14,15 +14,15 @@ T = TypeVar("T", bound="BodyTranscribeV1AudioTranscriptionsPost")
 class BodyTranscribeV1AudioTranscriptionsPost:
     """
     Attributes:
-        model (str):
-        file (Union[None, Unset, str]):
-        file_path (Union[None, Unset, str]):
-        language (Union[None, Unset, str]):
-        response_format (Union[Unset, str]):  Default: 'json'.
-        prompt (Union[None, Unset, str]):
-        temperature (Union[None, Unset, float]):
-        timestamp_granularities (Union[Unset, list[str]]):
-        diarization (Union[None, Unset, str]):
+        model (str): ID of a configured transcription model.
+        file (Union[None, Unset, str]): Audio to upload. Omit when using file_path.
+        file_path (Union[None, Unset, str]): Staged path or URL. Omit with a file upload.
+        language (Union[None, Unset, str]): Language hint for models that support it.
+        response_format (Union[Unset, str]): Transcript format such as json, text, srt or vtt. Default: 'json'.
+        prompt (Union[None, Unset, str]): Accepted for OpenAI compatibility and ignored.
+        temperature (Union[None, Unset, float]): Accepted for OpenAI compatibility and ignored.
+        timestamp_granularities (Union[Unset, list[str]]): OpenAI timestamp option. Verbose JSON returns both levels.
+        diarization (Union[None, Unset, str]): Set true to transcribe stereo channels separately.
     """
 
     model: str

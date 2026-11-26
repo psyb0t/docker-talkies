@@ -64,7 +64,10 @@ def sync_detailed(
     client: Union[AuthenticatedClient, Client],
     body: File,
 ) -> Response[Union[FilesPutV1FilesPathPutResponse201, HTTPValidationError]]:
-    """Files Put
+    """Upload a staged file
+
+     Send the file as raw bytes. Use the relative path from the URL as file_path in a later transcription
+    request.
 
     Args:
         path (str):
@@ -96,7 +99,10 @@ def sync(
     client: Union[AuthenticatedClient, Client],
     body: File,
 ) -> Optional[Union[FilesPutV1FilesPathPutResponse201, HTTPValidationError]]:
-    """Files Put
+    """Upload a staged file
+
+     Send the file as raw bytes. Use the relative path from the URL as file_path in a later transcription
+    request.
 
     Args:
         path (str):
@@ -123,7 +129,10 @@ async def asyncio_detailed(
     client: Union[AuthenticatedClient, Client],
     body: File,
 ) -> Response[Union[FilesPutV1FilesPathPutResponse201, HTTPValidationError]]:
-    """Files Put
+    """Upload a staged file
+
+     Send the file as raw bytes. Use the relative path from the URL as file_path in a later transcription
+    request.
 
     Args:
         path (str):
@@ -153,7 +162,10 @@ async def asyncio(
     client: Union[AuthenticatedClient, Client],
     body: File,
 ) -> Optional[Union[FilesPutV1FilesPathPutResponse201, HTTPValidationError]]:
-    """Files Put
+    """Upload a staged file
+
+     Send the file as raw bytes. Use the relative path from the URL as file_path in a later transcription
+    request.
 
     Args:
         path (str):
