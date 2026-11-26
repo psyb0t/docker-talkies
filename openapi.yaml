@@ -107,13 +107,29 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
-  /unload:
+  /v1/unload:
     post:
       tags:
       - Models
       summary: Unload all models
-      description: Release all loaded models and return their IDs. The server refuses
-        the request while inference is active.
+      description: Stop model workers and release their CPU and GPU memory. Workers
+        restart on demand.
+      operationId: unload_all_v1_unload_post
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnloadResult'
+        '409':
+          description: A model is serving active inference or a stream.
+  /unload:
+    post:
+      tags:
+      - Models
+      summary: Unload all models (legacy)
+      description: Use POST /v1/unload for new clients.
       operationId: unload_all_unload_post
       responses:
         '200':
@@ -124,6 +140,7 @@ paths:
                 additionalProperties: true
                 type: object
                 title: Response Unload All Unload Post
+      deprecated: true
   /v1/audio/speech:
     post:
       tags:
@@ -508,6 +525,18 @@ components:
         Ignored by Kokoro, which has no instruction-prompt input.
 
         ``speed`` clamped to 0.25-4.0 (matches OpenAI''s documented range).'
+    UnloadResult:
+      properties:
+        unloaded:
+          items:
+            type: string
+          type: array
+          title: Unloaded
+          description: IDs of the models released by this request.
+      type: object
+      required:
+      - unloaded
+      title: UnloadResult
     ValidationError:
       properties:
         loc:

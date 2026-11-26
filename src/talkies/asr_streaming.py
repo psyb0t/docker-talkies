@@ -53,6 +53,9 @@ class StreamingProtocolError(ValueError):
         self.code = code
         self.detail = detail
 
+    def __reduce__(self):
+        return type(self), (self.code, self.detail)
+
 
 class StreamBufferFullError(RuntimeError):
     """A stream's bounded receive buffer cannot accept another frame."""

@@ -21,7 +21,7 @@ time.
 | `POST /v1/audio/speech` | OpenAI-compatible speech synthesis |
 | `WS /v1/audio/transcriptions/stream` | Live 16 kHz PCM ASR |
 | `/v1/files` | Server-side file staging |
-| `/api/ps`, `/unload` | Model inspection and eviction |
+| `/api/ps`, `/v1/unload` | Model inspection and eviction |
 | `/v1/mcp` | Streamable HTTP MCP with ASR and file tools |
 
 ## Quick start

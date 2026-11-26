@@ -18,7 +18,8 @@ startup. Durations accept seconds (`600`) or forms such as `90s`, `45m`, and
 | `TALKIES_DEVICE` | `cpu` (CPU image), `cuda` (CUDA image) | `auto`, `cpu`, `cuda`, or `cuda:N`; `auto` picks CUDA when Torch sees a GPU |
 | `TALKIES_MODELS_FILE` | `/app/models.json` | Registry JSON path |
 | `TALKIES_ENABLED_MODELS` | all registry entries | Model allowlist; unknown slugs fail startup |
-| `TALKIES_PRELOAD` | empty | Slugs to attempt loading at startup; unknown slugs are logged and skipped |
+| `TALKIES_MODEL_DOWNLOAD` | `startup` | Fetch missing enabled weights at `startup` or fetch a model's missing files on first use with `on-demand`. Both use installed files first. |
+| `TALKIES_PRELOAD` | empty | Slugs to load into memory before serving requests. With `on-demand`, preloading triggers the first download for those slugs. Unknown slugs are logged and skipped. |
 | `TALKIES_DATA_DIR` | `/data` | Parent of `models/`, `files/`, and `custom-voices/` |
 
 The image sets `HF_HUB_OFFLINE=1` for the server. The entrypoint temporarily

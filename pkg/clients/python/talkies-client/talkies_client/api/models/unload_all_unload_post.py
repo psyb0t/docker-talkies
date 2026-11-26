@@ -48,10 +48,9 @@ def sync_detailed(
     *,
     client: Union[AuthenticatedClient, Client],
 ) -> Response[UnloadAllUnloadPostResponseUnloadAllUnloadPost]:
-    """Unload all models
+    """Unload all models (legacy)
 
-     Release all loaded models and return their IDs. The server refuses the request while inference is
-    active.
+     Use POST /v1/unload for new clients.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -74,10 +73,9 @@ def sync(
     *,
     client: Union[AuthenticatedClient, Client],
 ) -> Optional[UnloadAllUnloadPostResponseUnloadAllUnloadPost]:
-    """Unload all models
+    """Unload all models (legacy)
 
-     Release all loaded models and return their IDs. The server refuses the request while inference is
-    active.
+     Use POST /v1/unload for new clients.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -96,10 +94,9 @@ async def asyncio_detailed(
     *,
     client: Union[AuthenticatedClient, Client],
 ) -> Response[UnloadAllUnloadPostResponseUnloadAllUnloadPost]:
-    """Unload all models
+    """Unload all models (legacy)
 
-     Release all loaded models and return their IDs. The server refuses the request while inference is
-    active.
+     Use POST /v1/unload for new clients.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -120,10 +117,9 @@ async def asyncio(
     *,
     client: Union[AuthenticatedClient, Client],
 ) -> Optional[UnloadAllUnloadPostResponseUnloadAllUnloadPost]:
-    """Unload all models
+    """Unload all models (legacy)
 
-     Release all loaded models and return their IDs. The server refuses the request while inference is
-    active.
+     Use POST /v1/unload for new clients.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.

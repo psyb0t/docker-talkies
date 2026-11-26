@@ -100,8 +100,8 @@ class KokoroNvidiaBackend:
 
     def voices(self) -> list[str]:
         if self._voices_cache is None:
-            self._voices_cache = self._scan_voices()
-        return list(self._voices_cache)
+            self._voices_cache = self._scan_voices() or None
+        return list(self._voices_cache or [])
 
     def default_voice(self) -> str:
         catalog = self.voices()

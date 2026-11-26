@@ -224,6 +224,9 @@ CHATTERBOX_WATERMARK: bool = _CHATTERBOX_WATERMARK_RAW in ("", "true", "1", "yes
 
 PRELOAD: list[str] = _list_env("TALKIES_PRELOAD")
 ENABLED_MODELS: list[str] = _list_env("TALKIES_ENABLED_MODELS")
+MODEL_DOWNLOAD = os.environ.get("TALKIES_MODEL_DOWNLOAD") or "startup"
+if MODEL_DOWNLOAD not in {"startup", "on-demand"}:
+    raise ValueError("TALKIES_MODEL_DOWNLOAD must be startup or on-demand")
 
 # VAD chunking — audio longer than this triggers VAD-based segmentation
 # regardless of backend. SALM uses the same chunker but, because it has

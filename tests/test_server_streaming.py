@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import importlib
 import json
+import os
 import sys
 import types
 import wave
@@ -101,7 +102,7 @@ class _FakeBackend:
         self.unload_count += 1
 
     def loaded(self) -> bool:
-        return True
+        return self.unload_count == 0
 
     def last_used_secs_ago(self) -> float:
         return 0.0
@@ -201,6 +202,7 @@ def streaming_server(monkeypatch, tmp_path: Path):
             "talkies.files",
             "talkies.mcp_server",
             "talkies.models",
+            "talkies.model_workers",
             "talkies.server",
             "talkies.tts",
         )
@@ -216,6 +218,7 @@ def streaming_server(monkeypatch, tmp_path: Path):
             "files",
             "mcp_server",
             "models",
+            "model_workers",
             "server",
             "tts",
         )
@@ -227,6 +230,8 @@ def streaming_server(monkeypatch, tmp_path: Path):
     sys.modules["talkies.mcp_server"] = mcp_module
     talkies_package.models = models_module
     talkies_package.mcp_server = mcp_module
+    model_workers = importlib.import_module("talkies.model_workers")
+    monkeypatch.setattr(model_workers, "isolate_models", models_module.build_backends)
     server = importlib.import_module("talkies.server")
     yield server, backend
     for name in replaced:
@@ -627,6 +632,7 @@ def test_connection_limit_and_unload_conflict(streaming_server) -> None:
             first.receive_json()
             response = client.delete("/api/ps/stream-model")
             assert response.status_code == 409
+            assert client.post("/v1/unload").status_code == 409
 
             with client.websocket_connect("/v1/audio/transcriptions/stream") as second:
                 second.send_json(_start_message())
@@ -637,70 +643,72 @@ def test_connection_limit_and_unload_conflict(streaming_server) -> None:
             first.receive_json()
 
 
-def test_manual_unload_drains_cuda_memory(streaming_server, monkeypatch) -> None:
+def test_manual_unload_releases_model(streaming_server) -> None:
     server, backend = streaming_server
-    drain_calls = 0
-
-    async def fake_drain() -> None:
-        nonlocal drain_calls
-        drain_calls += 1
-
-    monkeypatch.setattr(server, "_wait_for_gpu_drain", fake_drain)
-
     with TestClient(server.app) as client:
         response = client.delete("/api/ps/stream-model")
-
     assert response.status_code == 200
     assert backend.unload_count == 1
-    assert drain_calls == 1
 
 
-def test_unload_all_drains_cuda_memory_once(streaming_server, monkeypatch) -> None:
+def test_bulk_unload_and_legacy_alias(streaming_server) -> None:
     server, backend = streaming_server
-    drain_calls = 0
+    with TestClient(server.app) as client:
+        response = client.post("/v1/unload")
+        assert response.status_code == 200
+        assert response.json() == {"unloaded": ["stream-model"]}
+        assert client.post("/unload").json() == {"unloaded": []}
+    assert backend.unload_count == 1
 
-    async def fake_drain() -> None:
-        nonlocal drain_calls
-        drain_calls += 1
 
-    monkeypatch.setattr(server, "_wait_for_gpu_drain", fake_drain)
+def test_stream_worker_exits_before_unload_returns(streaming_server) -> None:
+    server, backend = streaming_server
+    worker = server.WorkerBackend(backend, _FakeBackend)
+    server.BACKENDS["stream-model"] = worker
 
     with TestClient(server.app) as client:
-        response = client.post("/unload")
+        with client.websocket_connect("/v1/audio/transcriptions/stream") as websocket:
+            websocket.send_json(_start_message())
+            assert websocket.receive_json()["type"] == "ready"
+            process = worker._process._process
+            assert process is not None
+            pid = process.pid
+            assert pid is not None and pid != os.getpid()
+            assert client.post("/v1/unload").status_code == 409
+            websocket.send_json({"type": "end"})
+            assert websocket.receive_json()["type"] == "final"
+            assert websocket.receive_json()["type"] == "stats"
+        assert client.post("/v1/unload").json() == {"unloaded": ["stream-model"]}
+        with pytest.raises(ProcessLookupError):
+            os.kill(pid, 0)
 
-    assert response.status_code == 200
-    assert response.json() == {"unloaded": ["stream-model"]}
-    assert backend.unload_count == 1
-    assert drain_calls == 1
 
-
-@pytest.mark.parametrize(
-    ("initialized", "expected_calls"),
-    [
-        (False, []),
-        (True, ["synchronize", "empty_cache", "ipc_collect"]),
-    ],
-)
-def test_gpu_drain_does_not_initialize_an_unused_torch_context(
-    streaming_server,
-    monkeypatch,
-    initialized: bool,
-    expected_calls: list[str],
-) -> None:
+def test_pcm_worker_stream_is_released(streaming_server) -> None:
     server, _ = streaming_server
-    calls: list[str] = []
-    fake_cuda = types.SimpleNamespace(
-        is_available=lambda: True,
-        is_initialized=lambda: initialized,
-        synchronize=lambda: calls.append("synchronize"),
-        empty_cache=lambda: calls.append("empty_cache"),
-        ipc_collect=lambda: calls.append("ipc_collect"),
-    )
-    monkeypatch.setitem(sys.modules, "torch", types.SimpleNamespace(cuda=fake_cuda))
+    backend = _FakeTTSBackend()
+    worker = server.WorkerBackend(backend, _FakeTTSBackend)
+    server.BACKENDS["stream-model"] = worker
+    server.is_tts_backend = lambda candidate: hasattr(candidate, "synthesize")
 
-    asyncio.run(server._wait_for_gpu_drain())
-
-    assert calls == expected_calls
+    with TestClient(server.app) as client:
+        response = client.post(
+            "/v1/audio/speech",
+            json={
+                "model": "stream-model",
+                "input": "test",
+                "voice": "voice",
+                "response_format": "pcm",
+            },
+        )
+        assert response.status_code == 200, response.text
+        assert response.content == b"chunk-onechunk-two"
+        process = worker._process._process
+        assert process is not None
+        pid = process.pid
+        assert pid is not None
+        assert client.post("/v1/unload").status_code == 200
+        with pytest.raises(ProcessLookupError):
+            os.kill(pid, 0)
 
 
 def test_two_websockets_are_admitted_and_third_is_rejected(

@@ -467,9 +467,9 @@ talkies mirrors a subset of [speaches](https://github.com/speaches-ai/speaches) 
 | `GET /v1/models` | OpenAI-style list of configured slugs. Each entry includes a `modality` field (`asr` or `tts`) so clients can filter. |
 | `GET /api/ps` | Currently-loaded models with per-model `idle_seconds`. |
 | `DELETE /api/ps/{model_id}` | Evict one model from memory. Slug can be URL-encoded (`/` → `%2F`). 404 if not loaded. |
-| `POST /unload` | Evict every loaded model. Returns the list actually unloaded. |
+| `POST /v1/unload` | Stop all resident model workers. Returns the released model IDs. |
 
-Model eviction (`DELETE /api/ps/...`, `POST /unload`) forces a cold-load for anyone mid-request, so only do it for explicit maintenance the user asked for (e.g. "free up VRAM"). Auth is only enforced when `TALKIES_AUTH_TOKEN` is set — require it on shared deployments and don't expose these routes on an unauthenticated network.
+Unload stops the model workers and frees their memory. The next inference request loads the model again. Active inference or streaming returns 409. Use these routes for maintenance, such as freeing VRAM. Set `TALKIES_AUTH_TOKEN` before exposing the API on a shared network.
 
 Behind these: an **idle sweeper** runs every `TALKIES_SWEEPER_INTERVAL` s (default 60) and unloads anything not used in `TALKIES_MODEL_TTL` s (default 600). Set `TALKIES_MODEL_TTL=0` to disable.
 
@@ -724,7 +724,7 @@ in the same request shape.
 3. **Stage repeated files** via `PUT /v1/files/{path}` and call with `file_path=` to avoid re-uploading on every retry/iteration.
 4. **`response_format=text`** for the "just give me the string" case — no `jq -r .text` needed, content-type is `text/plain`.
 5. **One active model family at a time** — every transcribe request evicts other loaded models. Multiple live streams may share one pinned model up to `TALKIES_STREAM_MAX_CONNECTIONS`; a request or stream for a different model receives a conflict until the streams end. Use two containers if you need concurrent models.
-6. **`POST /unload` after a job** — explicit eviction frees VRAM/RAM faster than waiting for the 10-min idle sweeper. Useful in CI / batch scripts.
+6. **`POST /v1/unload` after a job** — explicit eviction frees VRAM/RAM faster than waiting for the 10-min idle sweeper. Useful in CI / batch scripts.
 7. **`canary-qwen-2.5b` has no timestamps** — `verbose_json.segments` / `.words` come back empty, `srt`/`vtt` collapse to one cue. Use a Whisper or Canary multitask slug if you need timing data.
 8. **Diarization requires true stereo** — if your "stereo" file is the same mono signal copied to both channels, diarization won't separate speakers. The technique is exact for two-mic setups, useless otherwise.
 9. **Long files just work** — VAD chunking happens transparently. Don't pre-split. Send the whole file.

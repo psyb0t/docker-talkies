@@ -138,11 +138,11 @@ follow the data-retention guidance in [Operations](operations.md#remote-files-an
 |---|---|
 | `GET /api/ps` | Loaded models with `id`, `repo`, `loaded`, `idle_seconds`, `active_requests`, and `max_concurrency` |
 | `DELETE /api/ps/{model_id}` | Unload one loaded model; 404 if unknown or not loaded |
-| `POST /unload` | Unload every loaded model; returns `{"unloaded": [...]}` |
+| `POST /v1/unload` | Stop all resident model workers and return their IDs in `unloaded`. |
 
 Any active inference request pins its model: HTTP or MCP transcription,
 speech, or a live ASR stream. `DELETE /api/ps/{model_id}` returns HTTP 409
-while the target model has active requests, and `POST /unload` returns 409
+while the target model has active requests, and `POST /v1/unload` returns 409
 while any model has them. A request that needs a different model also gets
 409 until the pin is released.
 

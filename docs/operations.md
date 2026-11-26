@@ -39,7 +39,7 @@ is not tenant isolation.
 
 Models load lazily. `GET /api/ps` lists loaded models, idle time, active
 requests, and configured concurrency;
-`DELETE /api/ps/{model}` unloads one; `POST /unload` unloads all it can.
+`DELETE /api/ps/{model}` stops one model worker. `POST /v1/unload` stops all resident workers and returns their IDs in `unloaded`. Active inference or streaming returns 409. Workers start again on demand.
 `TALKIES_MODEL_TTL=0` disables automatic idle eviction. `TALKIES_PRELOAD`
 attempts configured models during startup; preload failures are logged.
 

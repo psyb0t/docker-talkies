@@ -3,6 +3,10 @@
 from __future__ import annotations
 
 
+class ModelProcessError(RuntimeError):
+    pass
+
+
 class ModelAdmissionError(RuntimeError):
     """A model request could not be admitted without exceeding a limit."""
 

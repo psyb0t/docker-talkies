@@ -8,7 +8,7 @@ manager can drive both with the same client code):
   GET    /v1/audio/voices                  list TTS voices by model
   GET    /api/ps                           list currently loaded model_ids
   DELETE /api/ps/{model_id}                evict one model from VRAM/RAM
-  POST   /unload                           evict all loaded models
+  POST   /v1/unload                        evict all loaded models
   POST   /v1/audio/transcriptions          OpenAI-compatible ASR
   POST   /v1/audio/speech                  OpenAI-compatible TTS
 
@@ -20,15 +20,18 @@ both speaches and this service.
 from __future__ import annotations
 
 import asyncio
-import gc
 import logging
 import mimetypes
 import os
+import subprocess
+import sys
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import aclosing, asynccontextmanager
+from importlib.util import find_spec
 from typing import Any
 from urllib.parse import unquote
 
+from anyio import CancelScope
 from fastapi import (
     FastAPI,
     File,
@@ -74,14 +77,10 @@ from .auth import BearerAuthMiddleware
 from .errors import ModelAdmissionError
 from .logging import configure as configure_logging
 from .mcp_server import build_mcp_server
-from .models import (
-    build_backends,
-    is_asr_backend,
-    is_streaming_asr_backend,
-    is_tts_backend,
-)
+from .model_weights import weights_cached
+from .model_workers import WorkerBackend, isolate_models
+from .models import is_asr_backend, is_streaming_asr_backend, is_tts_backend
 from .models.base import TranscribeResult
-
 
 _SERVICE_TAG = "Service"
 _MODEL_TAG = "Models"
@@ -89,35 +88,6 @@ _SPEECH_TAG = "Speech"
 _TRANSCRIPTION_TAG = "Transcription"
 _FILE_TAG = "Files"
 _BINARY_SCHEMA = {"type": "string", "format": "binary"}
-
-
-async def _wait_for_gpu_drain() -> None:
-    """Collect backend references and release initialized Torch CUDA caches.
-
-    Native backends release their device allocations in ``unload()``. Python
-    backends can leave tensors awaiting collection and cached blocks in the
-    Torch allocator. Collect twice, synchronize queued CUDA work, clear the
-    allocator cache, and collect CUDA IPC handles before another model loads.
-
-    Do not call into Torch unless its CUDA context is already initialized.
-    Initializing Torch solely during cleanup would itself reserve GPU memory
-    after unloading a native-only backend such as parakeet.cpp.
-    """
-
-    def _sync() -> None:
-        gc.collect()
-        gc.collect()
-        try:
-            import torch
-        except ImportError:
-            return
-        if not torch.cuda.is_available() or not torch.cuda.is_initialized():
-            return
-        torch.cuda.synchronize()
-        torch.cuda.empty_cache()
-        torch.cuda.ipc_collect()
-
-    await asyncio.to_thread(_sync)
 
 
 _VERBOSE_FORMATS = {"verbose_json", "srt", "vtt"}
@@ -129,17 +99,27 @@ log = logging.getLogger("talkies.server")
 def _resolve_device(req: str) -> str:
     if req != "auto":
         return req
-    try:
-        import torch
-
-        return "cuda" if torch.cuda.is_available() else "cpu"
-    except ImportError:
+    if find_spec("torch") is None:
         return "cpu"
+    try:
+        probe = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "import torch; raise SystemExit(not torch.cuda.is_available())",
+            ],
+            check=False,
+            timeout=30,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        log.warning("CUDA probe failed, using CPU", exc_info=True)
+        return "cpu"
+    return "cuda" if probe.returncode == 0 else "cpu"
 
 
 REGISTRY = config.load_registry()
 DEVICE = _resolve_device(config.DEVICE)
-BACKENDS = build_backends(REGISTRY, DEVICE)
+BACKENDS = isolate_models(REGISTRY, DEVICE)
 
 _STREAM_CLOSE_NORMAL = 1000
 _STREAM_CLOSE_PROTOCOL_ERROR = 4400
@@ -150,6 +130,27 @@ _STREAM_CLOSE_LIMIT = 4429
 _STREAM_CLOSE_INTERNAL_ERROR = 4500
 _STREAM_MAX_BUFFER_FRAMES = 256
 _STREAM_MAX_PENDING_MESSAGES = 1
+
+
+async def _ensure_weights(model: str) -> None:
+    if config.MODEL_DOWNLOAD != "on-demand":
+        return
+    entry = REGISTRY[model]
+    if await asyncio.to_thread(weights_cached, config.MODELS_DIR / model, entry):
+        return
+    env = dict(os.environ)
+    env.pop("HF_HUB_OFFLINE", None)
+    process = await asyncio.create_subprocess_exec(
+        sys.executable, "-m", "talkies.model_weights", "--", model, env=env
+    )
+    with CancelScope(shield=True):
+        code = await process.wait()
+    if code:
+        raise HTTPException(
+            status_code=503, detail="model weights could not be downloaded"
+        )
+
+
 _model_lock = asyncio.Lock()
 _active_requests: dict[str, int] = {}
 _active_streams: dict[str, int] = {}
@@ -196,14 +197,14 @@ async def _reserve_model(model_id: str, *, streaming: bool = False) -> None:
         siblings = [
             backend
             for sibling_id, backend in BACKENDS.items()
-            if sibling_id != model_id and backend.loaded()
+            if sibling_id != model_id
+            and (backend.loaded() or isinstance(backend, WorkerBackend))
         ]
         if siblings:
             await asyncio.gather(
                 *(backend.unload() for backend in siblings),
                 return_exceptions=False,
             )
-            await _wait_for_gpu_drain()
         _active_requests[model_id] = _active_request_count(model_id) + 1
         if streaming:
             _active_streams[model_id] = _active_stream_count(model_id) + 1
@@ -234,8 +235,6 @@ async def _idle_sweeper() -> None:
             if ttl <= 0:
                 continue
             for model_id, backend in BACKENDS.items():
-                if not backend.loaded():
-                    continue
                 last = backend.last_used_secs_ago()
                 if last is None:
                     continue
@@ -252,7 +251,6 @@ async def _idle_sweeper() -> None:
                         if _active_request_count(model_id):
                             continue
                         await backend.unload()
-                        await _wait_for_gpu_drain()
                 except Exception:  # noqa: BLE001
                     log.exception("idle sweeper: unload %s failed", model_id)
         except asyncio.CancelledError:
@@ -289,6 +287,7 @@ async def _lifespan(_app: FastAPI):
             continue
         log.info("preload: %s", model_id)
         try:
+            await _ensure_weights(model_id)
             await BACKENDS[model_id].get_model()
         except Exception:  # noqa: BLE001
             log.exception("preload %s failed", model_id)
@@ -307,6 +306,9 @@ async def _lifespan(_app: FastAPI):
                 await _sweeper_task
             except (asyncio.CancelledError, Exception):
                 pass
+        for backend in BACKENDS.values():
+            if isinstance(backend, WorkerBackend):
+                await backend.unload()
 
 
 app = FastAPI(
@@ -578,6 +580,7 @@ async def transcribe_stream(websocket: WebSocket) -> None:
 
         await _reserve_model(stream_config.model, streaming=True)
         reserved = True
+        await _ensure_weights(stream_config.model)
         session = await _start_streaming_backend(backend, stream_config)
         await websocket.send_json(
             pack_event(
@@ -697,10 +700,13 @@ async def transcribe_stream(websocket: WebSocket) -> None:
             _STREAM_CLOSE_INTERNAL_ERROR,
         )
     finally:
-        if session is not None:
-            await session.close()
-        if reserved and stream_config is not None:
-            await _release_model(stream_config.model, streaming=True)
+        with CancelScope(shield=True):
+            try:
+                if session is not None:
+                    await session.close()
+            finally:
+                if reserved and stream_config is not None:
+                    await _release_model(stream_config.model, streaming=True)
 
 
 @app.delete(
@@ -717,47 +723,62 @@ async def unload_one(model_id: str) -> JSONResponse:
     backend = BACKENDS.get(decoded)
     if backend is None:
         return JSONResponse({"detail": f"unknown model {decoded!r}"}, status_code=404)
-    if not backend.loaded():
-        return JSONResponse({"detail": "not loaded"}, status_code=404)
     async with _model_lock:
         if _active_request_count(decoded):
             return JSONResponse(
                 {"detail": "model has active inference requests"},
                 status_code=409,
             )
+        if not backend.loaded():
+            return JSONResponse({"detail": "not loaded"}, status_code=404)
         await backend.unload()
-        await _wait_for_gpu_drain()
     return JSONResponse({"unloaded": decoded}, status_code=200)
 
 
+class UnloadResult(BaseModel):
+    unloaded: list[str] = Field(
+        description="IDs of the models released by this request."
+    )
+
+
 @app.post(
-    "/unload",
+    "/v1/unload",
     tags=[_MODEL_TAG],
     summary="Unload all models",
     description=(
-        "Release all loaded models and return their IDs. The server refuses the "
-        "request while inference is active."
+        "Stop model workers and release their CPU and GPU memory. "
+        "Workers restart on demand."
     ),
+    responses={
+        409: {"description": "A model is serving active inference or a stream."}
+    },
 )
-async def unload_all() -> dict[str, Any]:
+async def unload_all() -> UnloadResult:
     async with _model_lock:
         if _active_request_count():
             raise HTTPException(
                 status_code=409,
                 detail="models have active inference requests",
             )
-        unloaded = []
-        for model_id, backend in BACKENDS.items():
-            if not backend.loaded():
-                continue
-            try:
+        unloaded = [
+            model_id for model_id, backend in BACKENDS.items() if backend.loaded()
+        ]
+        for backend in BACKENDS.values():
+            if isinstance(backend, WorkerBackend) or backend.loaded():
                 await backend.unload()
-                unloaded.append(model_id)
-            except Exception:  # noqa: BLE001
-                log.exception("unload %s failed", model_id)
-        if unloaded:
-            await _wait_for_gpu_drain()
-    return {"unloaded": unloaded}
+    return UnloadResult(unloaded=unloaded)
+
+
+@app.post(
+    "/unload",
+    tags=[_MODEL_TAG],
+    summary="Unload all models (legacy)",
+    description="Use POST /v1/unload for new clients.",
+    operation_id="unload_all_unload_post",
+    deprecated=True,
+)
+async def unload_all_legacy() -> dict[str, Any]:
+    return (await unload_all()).model_dump()
 
 
 _DIARIZATION_TRUE = {"true", "1", "yes", "on"}
@@ -950,6 +971,20 @@ async def speech(body: SpeechRequest) -> Response:
             detail=f"model {model!r} is not a TTS model — try /v1/audio/transcriptions",
         )
 
+    fmt = (body.response_format or "mp3").lower()
+    if fmt not in tts_mod.SUPPORTED_FORMATS:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"unsupported response_format {fmt!r}; supported: "
+                f"{list(tts_mod.SUPPORTED_FORMATS)}"
+            ),
+        )
+
+    if not body.input.strip():
+        raise HTTPException(status_code=400, detail="input text is empty")
+
+    await _ensure_weights(model)
     try:
         default_voice = backend.default_voice()
     except RuntimeError as exc:
@@ -967,20 +1002,7 @@ async def speech(body: SpeechRequest) -> Response:
             ),
         )
 
-    fmt = (body.response_format or "mp3").lower()
-    if fmt not in tts_mod.SUPPORTED_FORMATS:
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                f"unsupported response_format {fmt!r}; supported: "
-                f"{list(tts_mod.SUPPORTED_FORMATS)}"
-            ),
-        )
-
     speed = body.speed if body.speed is not None else 1.0
-
-    if not body.input.strip():
-        raise HTTPException(status_code=400, detail="input text is empty")
 
     # PCM streaming path — only when the backend natively supports it
     # (currently Qwen3-TTS only). Yields int16 LE PCM chunks as they are
@@ -1026,21 +1048,25 @@ async def speech(body: SpeechRequest) -> Response:
 
         async def _pcm_stream() -> AsyncIterator[bytes]:
             try:
-                async for chunk in backend.synthesize_stream(  # type: ignore
-                    body.input,
-                    voice=voice,
-                    speed=speed,
-                    instructions=body.instructions,
-                    language=body.language,
-                    sampling=sampling,
-                    chunk_size=chunk_size,
-                ):
-                    yield chunk
+                async with aclosing(
+                    backend.synthesize_stream(
+                        body.input,
+                        voice=voice,
+                        speed=speed,
+                        instructions=body.instructions,
+                        language=body.language,
+                        sampling=sampling,
+                        chunk_size=chunk_size,
+                    )
+                ) as chunks:
+                    async for chunk in chunks:
+                        yield chunk
             except (ValueError, FileNotFoundError, RuntimeError) as exc:
                 # Headers are already committed; log and stop the stream.
                 log.error("qwen3_tts streaming error (stream aborted): %s", exc)
             finally:
-                await _release_model(model)
+                with CancelScope(shield=True):
+                    await _release_model(model)
 
         return StreamingResponse(
             _pcm_stream(),
@@ -1271,6 +1297,7 @@ async def run_transcription_pipeline(
             detail=exc.detail,
         ) from exc
     try:
+        await _ensure_weights(model)
         return await _run_reserved_transcription_pipeline(
             raw=raw,
             original_name=original_name,

@@ -14,6 +14,7 @@ from .list_voices_v1_audio_voices_get_response_list_voices_v1_audio_voices_get i
 )
 from .speech_request import SpeechRequest
 from .unload_all_unload_post_response_unload_all_unload_post import UnloadAllUnloadPostResponseUnloadAllUnloadPost
+from .unload_result import UnloadResult
 from .validation_error import ValidationError
 from .validation_error_context import ValidationErrorContext
 
@@ -28,6 +29,7 @@ __all__ = (
     "ListVoicesV1AudioVoicesGetResponseListVoicesV1AudioVoicesGet",
     "SpeechRequest",
     "UnloadAllUnloadPostResponseUnloadAllUnloadPost",
+    "UnloadResult",
     "ValidationError",
     "ValidationErrorContext",
 )

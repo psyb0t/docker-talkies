@@ -6,6 +6,10 @@ explicitly with **Breaking.**), patch bumps are docs / build / fixes only.
 
 ## [Unreleased]
 
+- Add `TALKIES_MODEL_DOWNLOAD=on-demand` to fetch missing weights on the first request. Startup downloads remain the default.
+
+- Add `POST /v1/unload` and release model memory and CUDA contexts by stopping speech workers. Keep `POST /unload` as an alias.
+
 - Document every REST operation and add example requests and field descriptions for speech synthesis and transcription.
 
 ## v0.18.0. 2026-11-26
