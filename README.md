@@ -21,6 +21,7 @@ staging, model lifecycle controls, and an MCP endpoint for ASR workflows.
 - [Security in one minute](#security-in-one-minute)
 - [Development](#development)
 - [Sponsor](#sponsor)
+- [License](#license)
 
 ## Start here
 
@@ -206,4 +207,10 @@ Release notes are in
 
 ## Sponsor
 
+[Sponsor on GitHub](https://github.com/sponsors/psyb0t)
+
 <a href="https://www.buymeacoffee.com/psyb0t"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-blue.png" alt="Buy Me a Coffee" height="60" width="217"></a>
+
+## License
+
+[WTFPL](LICENSE). Bundled components and model weights follow their own licenses.
