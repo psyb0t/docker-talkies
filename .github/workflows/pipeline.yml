@@ -24,7 +24,7 @@ jobs:
     uses: psyb0t/reusable-github-workflows/.github/workflows/code-workflow.yml@master
     with:
       lint_command: "make lint" # flake8 + mypy in the dev image
-      test_command: "make test" # offline pytest in the dev image
+      test_command: "make test generate-check"
 
   badges:
     needs: [code, release]

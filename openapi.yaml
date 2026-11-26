@@ -1,0 +1,484 @@
+openapi: 3.1.0
+info:
+  title: talkies
+  description: "OpenAI-compatible speech wrapper \u2014 /v1/audio/transcriptions over\
+    \ Whisper / Parakeet / Canary ASR + /v1/audio/speech over Kokoro TTS. Lazy-loads\
+    \ models on first request, idle-unloads after TALKIES_MODEL_TTL."
+  version: 0.18.0
+paths:
+  /healthz:
+    get:
+      tags:
+      - Service
+      summary: Check service health
+      operationId: healthz_healthz_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                type: object
+                title: Response Healthz Healthz Get
+  /v1/models:
+    get:
+      tags:
+      - Models
+      summary: List Models
+      operationId: list_models_v1_models_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                type: object
+                title: Response List Models V1 Models Get
+  /v1/audio/voices:
+    get:
+      tags:
+      - Speech
+      summary: List Voices
+      description: "List available TTS voices across all loaded TTS models.\n\nReturned\
+        \ shape: ``{\"voices\": [{\"voice\": str, \"model\": str,\n\"default\": bool,\
+        \ \"origin\": str?}]}``. Pass any ``voice`` value to\n``POST /v1/audio/speech``\
+        \ together with its ``model`` slug \u2014 voices\nare not interchangeable\
+        \ across models (each TTS engine owns its own\ncatalog).\n\n``origin`` is\
+        \ set to ``\"builtin\"`` (shipped in the image) or\n``\"custom\"`` (mounted\
+        \ via ``/data/custom-voices/``) for backends that\nexpose a ``voice_origins()``\
+        \ method; omitted otherwise."
+      operationId: list_voices_v1_audio_voices_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                type: object
+                title: Response List Voices V1 Audio Voices Get
+  /api/ps:
+    get:
+      tags:
+      - Models
+      summary: List loaded models
+      operationId: list_loaded_api_ps_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                type: object
+                title: Response List Loaded Api Ps Get
+  /api/ps/{model_id}:
+    delete:
+      tags:
+      - Models
+      summary: Unload a model
+      operationId: unload_one_api_ps__model_id__delete
+      parameters:
+      - name: model_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Model Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /unload:
+    post:
+      tags:
+      - Models
+      summary: Unload all models
+      operationId: unload_all_unload_post
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                type: object
+                title: Response Unload All Unload Post
+  /v1/audio/speech:
+    post:
+      tags:
+      - Speech
+      summary: Speech
+      operationId: speech_v1_audio_speech_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SpeechRequest'
+        required: true
+      responses:
+        '200':
+          description: Audio in the requested format.
+          content:
+            audio/mpeg:
+              schema:
+                type: string
+                format: binary
+            audio/ogg:
+              schema:
+                type: string
+                format: binary
+            audio/aac:
+              schema:
+                type: string
+                format: binary
+            audio/flac:
+              schema:
+                type: string
+                format: binary
+            audio/wav:
+              schema:
+                type: string
+                format: binary
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/audio/transcriptions:
+    post:
+      tags:
+      - Transcription
+      summary: Transcribe
+      description: Transcribe an uploaded audio file, a staged path, or an HTTP(S)
+        URL. Provide exactly one of file or file_path.
+      operationId: transcribe_v1_audio_transcriptions_post
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Body_transcribe_v1_audio_transcriptions_post'
+        required: true
+      responses:
+        '200':
+          description: Transcript or subtitles in the requested response format.
+          content:
+            text/plain:
+              schema:
+                type: string
+            application/x-subrip:
+              schema:
+                type: string
+            text/vtt:
+              schema:
+                type: string
+            application/json:
+              schema:
+                type: object
+                title: Response Transcribe V1 Audio Transcriptions Post
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/files:
+    get:
+      tags:
+      - Files
+      summary: Files List
+      operationId: files_list_v1_files_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                type: object
+                title: Response Files List V1 Files Get
+  /v1/files/{path}:
+    put:
+      tags:
+      - Files
+      summary: Files Put
+      operationId: files_put_v1_files__path__put
+      parameters:
+      - name: path
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Path
+      responses:
+        '201':
+          description: Staged file path and size in bytes.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - path
+                - size
+                properties:
+                  path:
+                    type: string
+                  size:
+                    type: integer
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+    get:
+      tags:
+      - Files
+      summary: Files Get
+      operationId: files_get_v1_files__path__get
+      parameters:
+      - name: path
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Path
+      responses:
+        '200':
+          description: Staged file bytes. Content-Type follows the filename.
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      tags:
+      - Files
+      summary: Files Delete
+      operationId: files_delete_v1_files__path__delete
+      parameters:
+      - name: path
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Path
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+components:
+  schemas:
+    Body_transcribe_v1_audio_transcriptions_post:
+      properties:
+        file:
+          anyOf:
+          - type: string
+            contentMediaType: application/octet-stream
+          - type: 'null'
+          title: File
+        file_path:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: File Path
+        model:
+          type: string
+          title: Model
+        language:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Language
+        response_format:
+          type: string
+          title: Response Format
+          default: json
+        prompt:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Prompt
+        temperature:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Temperature
+        timestamp_granularities[]:
+          items:
+            type: string
+          type: array
+          title: Timestamp Granularities[]
+          default: []
+        diarization:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Diarization
+      type: object
+      required:
+      - model
+      title: Body_transcribe_v1_audio_transcriptions_post
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            $ref: '#/components/schemas/ValidationError'
+          type: array
+          title: Detail
+      type: object
+      title: HTTPValidationError
+    SpeechRequest:
+      properties:
+        model:
+          type: string
+          title: Model
+        input:
+          type: string
+          title: Input
+        voice:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Voice
+        response_format:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Response Format
+        speed:
+          anyOf:
+          - type: number
+            maximum: 4.0
+            minimum: 0.25
+          - type: 'null'
+          title: Speed
+        instructions:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Instructions
+        language:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Language
+        temperature:
+          anyOf:
+          - type: number
+            maximum: 2.0
+            minimum: 0.0
+          - type: 'null'
+          title: Temperature
+        top_k:
+          anyOf:
+          - type: integer
+            maximum: 1000.0
+            minimum: 1.0
+          - type: 'null'
+          title: Top K
+        top_p:
+          anyOf:
+          - type: number
+            maximum: 1.0
+            minimum: 0.0
+          - type: 'null'
+          title: Top P
+        repetition_penalty:
+          anyOf:
+          - type: number
+            maximum: 2.0
+            minimum: 0.5
+          - type: 'null'
+          title: Repetition Penalty
+        max_new_tokens:
+          anyOf:
+          - type: integer
+            maximum: 2048.0
+            minimum: 1.0
+          - type: 'null'
+          title: Max New Tokens
+        do_sample:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Do Sample
+      type: object
+      required:
+      - model
+      - input
+      title: SpeechRequest
+      description: 'OpenAI-compatible POST body for ``/v1/audio/speech``.
+
+
+        ``instructions`` controls speech style for backends that support it
+
+        (Qwen3-TTS: passed as the ``instruct`` parameter to ``generate_voice_clone``;
+
+        works best in ICL mode i.e. when a ``.txt`` transcript exists for the voice).
+
+        Ignored by Kokoro, which has no instruction-prompt input.
+
+        ``speed`` clamped to 0.25-4.0 (matches OpenAI''s documented range).'
+    ValidationError:
+      properties:
+        loc:
+          items:
+            anyOf:
+            - type: string
+            - type: integer
+          type: array
+          title: Location
+        msg:
+          type: string
+          title: Message
+        type:
+          type: string
+          title: Error Type
+        input:
+          title: Input
+        ctx:
+          type: object
+          title: Context
+      type: object
+      required:
+      - loc
+      - msg
+      - type
+      title: ValidationError

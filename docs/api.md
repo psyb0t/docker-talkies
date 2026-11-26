@@ -9,6 +9,10 @@ nav_order: 4
 Talkies serves HTTP on port 8000. When `TALKIES_AUTH_TOKEN` is set, send
 `Authorization: Bearer <token>` on every request except `/healthz`.
 
+The sidebar lists the REST operations by category. Download the
+[OpenAPI YAML](https://psyb0t.github.io/docker-talkies/reference/openapi.yaml)
+or use the [generated Python client](https://github.com/psyb0t/docker-talkies/tree/main/pkg/clients/python).
+
 ## Discovery and health
 
 | Route | Result |

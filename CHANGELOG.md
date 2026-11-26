@@ -4,10 +4,12 @@ All notable changes per release. Versions follow [semver](https://semver.org)
 pre-1.0 conventions: minor bumps may include breaking changes (called out
 explicitly with **Breaking.**), patch bumps are docs / build / fixes only.
 
-## [Unreleased]
+## v0.18.0. 2026-11-26
 
+- Generate OpenAPI YAML, a typed Python client, and a REST reference grouped by endpoint tags.
 - Migrated the documentation to Docusaurus with the existing HTTP and streaming guides and local search.
 - Restricted image builds to the default branch and releases to version tags. Tag runs reuse the scanned images and refresh release badges after the GitHub release.
+- Added README navigation and sponsorship links.
 
 ## v0.17.1 — 2026-11-09
 

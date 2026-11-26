@@ -23,11 +23,28 @@ export default {
         path: ".content",
         routeBasePath: "/",
         sidebarPath: "./sidebars.mjs",
-        editUrl: repository + "/edit/main/docs/",
+        docItemComponent: "@theme/ApiItem",
+        editUrl: ({ docPath }) => docPath.startsWith("reference/")
+          ? undefined
+          : repository + "/edit/main/docs/" + docPath,
       },
     }],
   ],
+  plugins: [["docusaurus-plugin-openapi-docs", {
+    id: "api",
+    docsPluginId: "classic",
+    config: {
+      reference: {
+        specPath: ".assets/reference/openapi.yaml",
+        outputDir: ".content/reference",
+        showInfoPage: false,
+        hideSendButton: true,
+        sidebarOptions: { groupPathsBy: "tag" },
+      },
+    },
+  }]],
   themes: [
+    "docusaurus-theme-openapi-docs",
     ["@easyops-cn/docusaurus-search-local", {
       docsDir: ".content",
       docsRouteBasePath: "/",

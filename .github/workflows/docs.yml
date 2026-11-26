@@ -17,4 +17,6 @@ jobs:
     uses: psyb0t/reusable-github-workflows/.github/workflows/pages-workflow.yml@master
     with:
       site_dir: website/build
-      build_command: make docs-build
+      openapi_file: openapi.yaml
+      openapi_command: '-'
+      build_command: make docs-build OPENAPI_FILE="$OPENAPI_FILE"

@@ -38,4 +38,8 @@ RUN --mount=type=cache,target=/root/.cache/uv \
         httpx==0.28.1 \
         uvicorn==0.47.0 \
         pydantic==2.13.4 \
-        python-multipart==0.0.20
+        python-multipart==0.0.20 \
+        mcp==1.27.1 \
+        numpy==1.26.4 \
+        pyyaml==6.0.3 \
+        openapi-python-client==0.25.3

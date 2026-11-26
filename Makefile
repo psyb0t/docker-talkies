@@ -179,12 +179,34 @@ clean: ## Remove build / cache artifacts (host-side)
 	rm -rf build dist *.egg-info .pytest_cache .mypy_cache .ruff_cache .venv
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 
+OPENAPI_FILE ?= openapi.yaml
+PYTHON_CLIENT_DIR := pkg/clients/python/talkies-client
+PYTHON_CLIENT_TEMPLATES := pkg/clients/python/templates
 PAGES_NODE_IMAGE := node:24.21.0-bookworm-slim@sha256:d6aa754f16b3197301076f047b5def2f02ea1dbbc2ca920407d46d7ec7f87b20
 DOCS_RUN := docker run --rm --cap-drop ALL --security-opt no-new-privileges \
 	--user "$$(id -u):$$(id -g)" -e HOME=/tmp -e COREPACK_HOME=/work/website/.corepack \
 	-v "$(CURDIR):/work:ro" -v "$(CURDIR)/website:/work/website" -w /work/website
 
-.PHONY: docs-build
+.PHONY: docs-openapi generate generate-check docs-build
+docs-openapi: dev-image ## Export openapi.yaml from FastAPI
+	docker run --rm --network none --user "$(UID):$(GID)" \
+		-e TALKIES_MODELS_FILE=/work/models-cpu.json -e TALKIES_DEVICE=cpu \
+		-v "$(CURDIR):/work:ro" -w /work $(DEV_IMAGE) \
+		python scripts/export_openapi.py > "$(OPENAPI_FILE)"
+
+generate: docs-openapi ## Regenerate the OpenAPI spec and typed Python client
+	$(DEV_RUN) openapi-python-client generate --path "$(OPENAPI_FILE)" --meta uv --custom-template-path "$(PYTHON_CLIENT_TEMPLATES)" \
+		--output-path "$(PYTHON_CLIENT_DIR)" --fail-on-warning --overwrite
+
+generate-check: dev-image ## Verify the checked-in spec and generated client
+	$(DEV_RUN) sh -ec 'tmp=$$(mktemp -d); \
+		TALKIES_MODELS_FILE=/work/models-cpu.json TALKIES_DEVICE=cpu \
+			python scripts/export_openapi.py > "$$tmp/openapi.yaml"; \
+		diff -u "$(OPENAPI_FILE)" "$$tmp/openapi.yaml"; \
+		openapi-python-client generate --path "$$tmp/openapi.yaml" --meta uv --custom-template-path "$(PYTHON_CLIENT_TEMPLATES)" \
+			--output-path "$$tmp/client" --fail-on-warning; \
+		diff -ru -x .ruff_cache -x __pycache__ "$(PYTHON_CLIENT_DIR)" "$$tmp/client"'
+
 docs-build: ## Build and check the documentation site
 	$(DOCS_RUN) $(PAGES_NODE_IMAGE) corepack pnpm install --frozen-lockfile --ignore-scripts --store-dir .pnpm-store
 	$(DOCS_RUN) --network none -e OPENAPI_FILE="$(OPENAPI_FILE)" $(PAGES_NODE_IMAGE) corepack pnpm run build

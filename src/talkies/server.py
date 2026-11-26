@@ -83,6 +83,14 @@ from .models import (
 from .models.base import TranscribeResult
 
 
+_SERVICE_TAG = "Service"
+_MODEL_TAG = "Models"
+_SPEECH_TAG = "Speech"
+_TRANSCRIPTION_TAG = "Transcription"
+_FILE_TAG = "Files"
+_BINARY_SCHEMA = {"type": "string", "format": "binary"}
+
+
 async def _wait_for_gpu_drain() -> None:
     """Collect backend references and release initialized Torch CUDA caches.
 
@@ -343,7 +351,7 @@ app.add_middleware(BearerAuthMiddleware, token=config.AUTH_TOKEN)
 app.add_middleware(_MCPSlashRewriteMiddleware)
 
 
-@app.get("/healthz")
+@app.get("/healthz", tags=[_SERVICE_TAG], summary="Check service health")
 def healthz() -> dict[str, Any]:
     return {"ok": True, "device": DEVICE, "models": list(BACKENDS.keys())}
 
@@ -355,7 +363,7 @@ def _modality_of(model_id: str) -> str:
     return "asr"
 
 
-@app.get("/v1/models")
+@app.get("/v1/models", tags=[_MODEL_TAG])
 def list_models() -> dict[str, Any]:
     return {
         "object": "list",
@@ -372,7 +380,7 @@ def list_models() -> dict[str, Any]:
     }
 
 
-@app.get("/v1/audio/voices")
+@app.get("/v1/audio/voices", tags=[_SPEECH_TAG])
 def list_voices() -> dict[str, Any]:
     """List available TTS voices across all loaded TTS models.
 
@@ -410,7 +418,7 @@ def list_voices() -> dict[str, Any]:
     return {"voices": out}
 
 
-@app.get("/api/ps")
+@app.get("/api/ps", tags=[_MODEL_TAG], summary="List loaded models")
 def list_loaded() -> dict[str, Any]:
     return {
         "models": [
@@ -667,7 +675,9 @@ async def transcribe_stream(websocket: WebSocket) -> None:
             await _release_model(stream_config.model, streaming=True)
 
 
-@app.delete("/api/ps/{model_id:path}")
+@app.delete(
+    "/api/ps/{model_id:path}", tags=[_MODEL_TAG], summary="Unload a model"
+)
 async def unload_one(model_id: str) -> JSONResponse:
     decoded = unquote(model_id)
     backend = BACKENDS.get(decoded)
@@ -686,7 +696,7 @@ async def unload_one(model_id: str) -> JSONResponse:
     return JSONResponse({"unloaded": decoded}, status_code=200)
 
 
-@app.post("/unload")
+@app.post("/unload", tags=[_MODEL_TAG], summary="Unload all models")
 async def unload_all() -> dict[str, Any]:
     async with _model_lock:
         if _active_request_count():
@@ -774,7 +784,20 @@ class SpeechRequest(BaseModel):
     do_sample: bool | None = None
 
 
-@app.post("/v1/audio/speech")
+@app.post(
+    "/v1/audio/speech",
+    tags=[_SPEECH_TAG],
+    response_class=Response,
+    responses={
+        200: {
+            "description": "Audio in the requested format.",
+            "content": {
+                tts_mod.content_type_for(fmt): {"schema": _BINARY_SCHEMA}
+                for fmt in tts_mod.SUPPORTED_FORMATS
+            },
+        }
+    },
+)
 async def speech(body: SpeechRequest) -> Response:
     model = body.model
     if log.isEnabledFor(logging.DEBUG):
@@ -953,7 +976,25 @@ async def speech(body: SpeechRequest) -> Response:
         await _release_model(model)
 
 
-@app.post("/v1/audio/transcriptions")
+@app.post(
+    "/v1/audio/transcriptions",
+    tags=[_TRANSCRIPTION_TAG],
+    description=(
+        "Transcribe an uploaded audio file, a staged path, or an HTTP(S) URL. "
+        "Provide exactly one of file or file_path."
+    ),
+    responses={
+        200: {
+            "description": "Transcript or subtitles in the requested response format.",
+            "content": {
+                "application/json": {"schema": {"type": "object"}},
+                "text/plain": {"schema": {"type": "string"}},
+                "application/x-subrip": {"schema": {"type": "string"}},
+                "text/vtt": {"schema": {"type": "string"}},
+            },
+        }
+    },
+)
 async def transcribe(
     file: UploadFile | None = File(default=None),
     file_path: str | None = Form(default=None),
@@ -1221,12 +1262,39 @@ def _resolve_files_path(raw: str) -> Any:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@app.get("/v1/files")
+@app.get("/v1/files", tags=[_FILE_TAG])
 def files_list() -> dict[str, Any]:
     return {"files": files_mod.list_files(config.FILES_DIR)}
 
 
-@app.put("/v1/files/{path:path}")
+@app.put(
+    "/v1/files/{path:path}",
+    tags=[_FILE_TAG],
+    status_code=201,
+    openapi_extra={
+        "requestBody": {
+            "required": True,
+            "content": {"application/octet-stream": {"schema": _BINARY_SCHEMA}},
+        }
+    },
+    responses={
+        201: {
+            "description": "Staged file path and size in bytes.",
+            "content": {
+                "application/json": {
+                    "schema": {
+                        "type": "object",
+                        "required": ["path", "size"],
+                        "properties": {
+                            "path": {"type": "string"},
+                            "size": {"type": "integer"},
+                        },
+                    }
+                }
+            },
+        }
+    },
+)
 async def files_put(path: str, request: Request) -> JSONResponse:
     dest, rel_str = _resolve_files_path(path)
     body = await request.body()
@@ -1242,7 +1310,17 @@ async def files_put(path: str, request: Request) -> JSONResponse:
     )
 
 
-@app.get("/v1/files/{path:path}")
+@app.get(
+    "/v1/files/{path:path}",
+    tags=[_FILE_TAG],
+    response_class=FileResponse,
+    responses={
+        200: {
+            "description": "Staged file bytes. Content-Type follows the filename.",
+            "content": {"application/octet-stream": {"schema": _BINARY_SCHEMA}},
+        }
+    },
+)
 def files_get(path: str) -> FileResponse:
     src, rel_str = _resolve_files_path(path)
     if src.is_symlink() or not src.is_file():
@@ -1255,7 +1333,7 @@ def files_get(path: str) -> FileResponse:
     )
 
 
-@app.delete("/v1/files/{path:path}")
+@app.delete("/v1/files/{path:path}", tags=[_FILE_TAG])
 def files_delete(path: str) -> JSONResponse:
     target, rel_str = _resolve_files_path(path)
     if target.is_symlink() or not target.is_file():

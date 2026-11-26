@@ -191,7 +191,7 @@ make test-streaming-custom # real CPU Sherpa/Vosk WebSocket + HTTP tests
 make test-streaming-custom-cuda # real CUDA Sherpa WebSocket + HTTP test
 make compile-heavy         # regenerate the hash-locked ML requirements
 make build-all             # CPU and CUDA production images
-make docs                  # build the documentation site into .testing/docs-site
+make docs                  # build the documentation site into website/build
 ```
 
 `make help` lists every target, and

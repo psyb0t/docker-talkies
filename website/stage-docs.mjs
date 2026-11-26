@@ -28,3 +28,7 @@ guides.sort((a, b) => {
 });
 writeFileSync("guide-order.mjs", "export const guides = " + JSON.stringify(guides.map(({ id }) => id)) + ";\n");
 copyFileSync(resolve(source, "llms.txt"), ".assets/llms.txt");
+
+const spec = process.env.OPENAPI_FILE || "openapi.yaml";
+mkdirSync(".assets/reference");
+copyFileSync(resolve("..", spec), ".assets/reference/openapi.yaml");

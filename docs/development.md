@@ -31,7 +31,9 @@ runtime dependencies, so unit tests stub the ML backends.
 | `make compile-heavy` | Regenerate the hash-locked ML requirements |
 | `make pkg-add PKG=...`, `pkg-remove`, `pkg-update`, `pkg-upgrade`, `pkg-lock` | Change light dependencies through uv |
 | `make version` | Print the release tag from `pyproject.toml` |
-| `make docs` | Build this documentation site into `website/build` |
+| `make docs` | Build the guides and generated REST reference into `website/build` |
+| `make generate` | Export `openapi.yaml` and regenerate the typed Python client |
+| `make generate-check` | Check that the spec and client match the generator output |
 | `make clean` | Remove local images and Python build and cache files |
 
 `make run` and `make run-cuda` publish `PORT` on every host interface and do
@@ -61,12 +63,15 @@ The `pkg-*` targets that change dependencies first move the uv
 ## Documentation site
 
 Keep the root README short and place detailed user documentation in `docs/`.
-GitHub Pages builds `docs/` from the `main` branch with Jekyll and the Just the
-Docs theme. Every page needs front matter with a `title`, a `description` of
+GitHub Actions builds the Docusaurus site from the guides in `docs/` and the
+FastAPI schema. Every guide needs front matter with a `title`, a `description` of
 50 to 170 characters, and a `nav_order`. Link pages to each other with
 relative `.md` paths, and link any file outside `docs/` with its full
 `https://github.com/psyb0t/docker-talkies/blob/main/<path>` URL, because
 relative links out of `docs/` break on the site.
 
-`make docs` builds the site with the same Jekyll image GitHub Pages uses and
-writes it to `website/build`, which Git ignores.
+`make generate` exports the REST contract from the FastAPI routes without
+starting the server or downloading model weights. The generated
+`openapi.yaml` feeds Docusaurus and the typed Python client under
+`pkg/clients/python/talkies-client`. Edit the FastAPI route metadata and rerun
+the generator. `make docs` writes the site to `website/build`.
