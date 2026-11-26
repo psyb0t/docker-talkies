@@ -6,7 +6,7 @@ How to run each layer: the Dev workflow table in [AGENTS.md](../../AGENTS.md#dev
 
 ## What every change needs
 
-- **TST1:** `make check` (lint plus unit tests in the dev container) passes before a change is called done. CI does not run it (`.github/workflows/pipeline.yml` only builds images), so this is the only gate.
+- **TST1:** `make check` (lint plus unit tests in the dev container) passes before a change is called done. The branch pipeline runs the same lint and unit tests before the default branch builds images.
 - **TST2:** Unit tests go in `tests/test_<module or backend>.py`. The suite has no pytest configuration file and no custom markers.
 
 ## Unit tests (`tests/`, `make test-unit`)

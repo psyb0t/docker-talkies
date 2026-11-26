@@ -10,9 +10,6 @@ CUDA_IMAGE := psyb0t/talkies:local-cuda
 CUDA_VERSIONED_IMAGE := psyb0t/talkies:v$(VERSION)-cuda
 CUDA_LATEST_IMAGE := psyb0t/talkies:latest-cuda
 BUMP_HOST := bash scripts/bump_exclude_newer.sh $(PYPROJECT)
-# The Jekyll image GitHub Pages builds docs/ with, pinned by digest.
-DOCS_IMAGE := ghcr.io/actions/jekyll-build-pages:v1.0.13@sha256:6791ebfd912185ed59bfb5fb102664fa872496b79f87ff8b9cfba292a7345041
-DOCS_SITE_DIR := .testing/docs-site
 
 UID := $(shell id -u)
 GID := $(shell id -g)
@@ -173,20 +170,21 @@ check: lint test ## Lint + tests
 # Documentation site: built host-side with the GitHub Pages Jekyll image.
 # -----------------------------------------------------------------------------
 
-docs: ## Build the docs/ site into .testing/docs-site with the GitHub Pages Jekyll image
-	mkdir -p $(DOCS_SITE_DIR)
-	docker run --rm \
-		-u $(UID):$(GID) \
-		-e HOME=/tmp \
-		-e GITHUB_WORKSPACE=/work \
-		-e GITHUB_REPOSITORY=psyb0t/docker-talkies \
-		-e INPUT_SOURCE=docs \
-		-e INPUT_DESTINATION=$(DOCS_SITE_DIR) \
-		-e INPUT_VERBOSE=false \
-		-v $(PWD):/work \
-		$(DOCS_IMAGE)
+docs: docs-build ## Build the GitHub Pages site into website/build
+
+
 
 clean: ## Remove build / cache artifacts (host-side)
 	docker rmi $(CPU_IMAGE) $(CUDA_IMAGE) 2>/dev/null || true
 	rm -rf build dist *.egg-info .pytest_cache .mypy_cache .ruff_cache .venv
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
+
+PAGES_NODE_IMAGE := node:24.21.0-bookworm-slim@sha256:d6aa754f16b3197301076f047b5def2f02ea1dbbc2ca920407d46d7ec7f87b20
+DOCS_RUN := docker run --rm --cap-drop ALL --security-opt no-new-privileges \
+	--user "$$(id -u):$$(id -g)" -e HOME=/tmp -e COREPACK_HOME=/work/website/.corepack \
+	-v "$(CURDIR):/work:ro" -v "$(CURDIR)/website:/work/website" -w /work/website
+
+.PHONY: docs-build
+docs-build: ## Build and check the documentation site
+	$(DOCS_RUN) $(PAGES_NODE_IMAGE) corepack pnpm install --frozen-lockfile --ignore-scripts --store-dir .pnpm-store
+	$(DOCS_RUN) --network none -e OPENAPI_FILE="$(OPENAPI_FILE)" $(PAGES_NODE_IMAGE) corepack pnpm run build

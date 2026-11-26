@@ -31,7 +31,7 @@ runtime dependencies, so unit tests stub the ML backends.
 | `make compile-heavy` | Regenerate the hash-locked ML requirements |
 | `make pkg-add PKG=...`, `pkg-remove`, `pkg-update`, `pkg-upgrade`, `pkg-lock` | Change light dependencies through uv |
 | `make version` | Print the release tag from `pyproject.toml` |
-| `make docs` | Build this documentation site into `.testing/docs-site` |
+| `make docs` | Build this documentation site into `website/build` |
 | `make clean` | Remove local images and Python build and cache files |
 
 `make run` and `make run-cuda` publish `PORT` on every host interface and do
@@ -69,4 +69,4 @@ relative `.md` paths, and link any file outside `docs/` with its full
 relative links out of `docs/` break on the site.
 
 `make docs` builds the site with the same Jekyll image GitHub Pages uses and
-writes it to `.testing/docs-site`, which Git ignores.
+writes it to `website/build`, which Git ignores.

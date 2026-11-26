@@ -111,7 +111,7 @@ What each test layer covers and when to use it: [.agents/rules/testing.md](.agen
 
 ## Project-specific landmines
 
-- **CI runs no tests and no lint.** `.github/workflows/pipeline.yml` builds and scans the two images, makes badges, and publishes on tags. `make check` and the integration tests are local only; nothing else catches a lint or unit-test failure before a release (TST1).
+- **CI checks branch pushes.** The code workflow runs `make lint` and `make test`. The default branch builds and scans both images after checks pass. Version tags wait for the matching default-branch run and promote those images. GPU integration tests run separately (TST1).
 - **Model weights never enter git or the image.** `.gitignore` and `.dockerignore` both exclude `*.safetensors`, `*.bin`, `*.gguf`, `*.pt`, `*.pth`, `*.onnx`, `*.nemo`, `*.ckpt` and `/models/`. Weights reach a container only through `entrypoint.sh` at boot.
 - **A non-empty model directory counts as cached.** `entrypoint.sh` skips any `/data/models/<slug>/` that has files in it, so an interrupted download is never resumed or repaired. Delete the directory to force a fresh fetch. Dependency repos (`dependencies` in a registry entry) go to the standard Hugging Face cache instead (`HF_HOME=/data/hf` in the CUDA image).
 - **Without `TALKIES_ENABLED_MODELS` the first boot downloads every registry entry.** Restrict it when running images locally.
