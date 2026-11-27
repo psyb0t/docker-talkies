@@ -5,9 +5,11 @@
 [![license](https://raw.githubusercontent.com/psyb0t/docker-talkies/badges/license.svg)](https://github.com/psyb0t/docker-talkies/blob/main/LICENSE)
 [![Docker Pulls](https://img.shields.io/docker/pulls/psyb0t/talkies?style=flat-square)](https://hub.docker.com/r/psyb0t/talkies)
 
-Self-hosted speech services in one Docker image: OpenAI-compatible file
-transcription and text-to-speech, Talkies live ASR over WebSocket, file
-staging, model lifecycle controls, and an MCP endpoint for ASR workflows.
+Audio goes in, words come out. Text goes in, speech comes out. Talkies
+handles the talking and listening on your own machine, including live
+transcription, subtitles, and voice cloning. Pick the model for the job and
+let the thing talk. File transcription and speech use OpenAI-compatible
+HTTP endpoints; live recognition uses WebSocket, and agents get MCP tools.
 
 ## Contents
 
